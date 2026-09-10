@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --blood: #C41230;
+  --blood-dark: #8B0000;
+  --blood-light: #FF1744;
+  --pulse: #FF4560;
+  --safe: #00C48C;
+  --warn: #FFB300;
+  --ink: #0D0D0D;
+  --ink-2: #1A1A2E;
+  --surface: #F5F0EB;
+  --surface-2: #EDE8E3;
+  --card: #FFFFFF;
+  --muted: #6B6578;
+  --border: #E2DDD8;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--surface);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display { font-family: 'Syne', sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Blood drop pulse animation */
+@keyframes blood-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.85; }
+}
+@keyframes ticker {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes sos-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196,18,48,0); }
+  50% { box-shadow: 0 0 0 12px rgba(196,18,48,0.25); }
+}
+
+.blood-pulse { animation: blood-pulse 2s ease-in-out infinite; }
+.fade-up { animation: fadeUp 0.5s ease forwards; }
+.sos-ring { animation: sos-flash 1.5s ease infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
