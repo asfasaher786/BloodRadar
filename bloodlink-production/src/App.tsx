@@ -4,9 +4,9 @@ import { API_BASE } from "./lib/api";
 import logoImage from "./assets/logo.png";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Heart, Droplets, Building2, Calendar, MapPin, Search,
-  Bell, Award, Users, AlertTriangle, ShieldCheck, Phone, Sparkles,
-  Activity, Zap, ChevronRight, X, Menu, TrendingUp, Clock, CheckCircle2
+  Heart, Droplets, Building2, Calendar, MapPin,
+  Bell, Users, AlertTriangle, Phone, Sparkles,
+  Activity, Zap, ChevronRight, X, Menu, TrendingUp, CheckCircle2, Lock
 } from "lucide-react";
 
 import MapComponent from "./components/MapComponent";
@@ -15,6 +15,7 @@ import SOSRequestForm from "./components/SOSRequestForm";
 import DonorSearch from "./components/DonorSearch";
 import StatsDashboard from "./components/StatsDashboard";
 import DonorStreakBadge from "./components/DonorStreakBadge";
+import DonorInbox from "./components/DonorInbox";
 import RealMLPanel from "./components/RealMLPanel";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>([]);
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([]);
   const [currentUserDonor, setCurrentUserDonor] = useState<Donor | null>(null);
+  const [meRole, setMeRole] = useState<string>("donor");
   const [selectedItem, setSelectedItem] = useState<Hospital | BloodCamp | null>(null);
   const [flashSOS, setFlashSOS] = useState(false);
   const [activeDonorTab, setActiveDonorTab] = useState<'search' | 'register'>('search');
@@ -36,24 +38,30 @@ export default function App() {
 
   const loadData = async () => {
     try {
-      const [hospRes, campRes, donorRes, emergRes, notifRes] = await Promise.all([
+      const [hospRes, campRes, donorRes, emergRes, notifRes, meRes] = await Promise.all([
         fetch(`${API_BASE}/api/hospitals`),
         fetch(`${API_BASE}/api/camps`),
         fetch(`${API_BASE}/api/donors`),
         fetch(`${API_BASE}/api/emergencies`),
         fetch(`${API_BASE}/api/notifications`),
+        // The logged-in donor's own profile comes from the server session
+        // (httpOnly cookie), never from guessing against the public masked list.
+        fetch(`${API_BASE}/api/auth/me`, { credentials: "include" }),
       ]);
       if (hospRes.ok) setHospitals(await hospRes.json());
       if (campRes.ok) setCamps(await campRes.json());
-      if (donorRes.ok) {
-        const dList = await donorRes.json();
-        setDonors(dList);
-        const myPhone = localStorage.getItem("bloodradar_my_donor_phone");
-        const me = myPhone ? dList.find((d: Donor) => d.phone === myPhone) : null;
-        setCurrentUserDonor(me || null);
-      }
+      if (donorRes.ok) setDonors(await donorRes.json());
       if (emergRes.ok) setEmergencies(await emergRes.json());
       if (notifRes.ok) setNotifications(await notifRes.json());
+      if (meRes.ok) {
+        const data = await meRes.json();
+        if (data.user?.donor) {
+          setCurrentUserDonor(data.user.donor);
+          setMeRole(data.user.role || "donor");
+        } else {
+          setCurrentUserDonor(null);
+        }
+      }
     } catch (e) {
       console.error("Data load failed:", e);
     } finally {
@@ -63,26 +71,23 @@ export default function App() {
 
   useEffect(() => { loadData(); }, []);
 
+  // Live updates: the board and donor inbox refresh the moment an SOS is
+  // created, its status changes, or a donor accepts a contact request.
+  // Events are PII-free by contract (ids/status only) — details via loadData.
+  useEffect(() => {
+    const es = new EventSource(`${API_BASE}/api/events`);
+    const refresh = () => loadData();
+    es.addEventListener("emergency-created", refresh);
+    es.addEventListener("emergency-status-changed", refresh);
+    es.addEventListener("contact-request-accepted", refresh);
+    es.addEventListener("contact-request-declined", refresh);
+    return () => es.close();
+  }, []);
+
   const handleSOSSuccess = () => { loadData(); document.getElementById("emergencies-board")?.scrollIntoView({ behavior: 'smooth' }); };
   const handleCampRegistration = async (campId: string) => {
     await fetch(`${API_BASE}/api/camps/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campId }) });
     loadData();
-  };
-  const handleFulfillSOS = async (sosId: string) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/emergencies/${sosId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "Fulfilled" })
-      });
-      if (!response.ok) {
-        console.error("Failed to mark request as fulfilled:", await response.text());
-        return;
-      }
-      loadData();
-    } catch (err) {
-      console.error("Network error marking request as fulfilled:", err);
-    }
   };
   const handleToggleCurrentUserAvailability = (isAvailable: boolean) => {
     if (currentUserDonor) { setCurrentUserDonor({ ...currentUserDonor, isAvailable }); loadData(); }
@@ -263,10 +268,13 @@ export default function App() {
           </motion.div>
         </div>
 
-        {/* Donor badge */}
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-5">
+        {/* Donor badge + inbox */}
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-5 space-y-6">
           {currentUserDonor && (
             <DonorStreakBadge donor={currentUserDonor} onToggleAvailability={handleToggleCurrentUserAvailability} onDonorUpdated={handleDonorProfileUpdated} lang={lang} />
+          )}
+          {currentUserDonor && meRole === 'donor' && (
+            <DonorInbox lang={lang} onChanged={loadData} />
           )}
         </motion.div>
       </section>
@@ -399,13 +407,17 @@ export default function App() {
                     <div>👥 <span className="font-semibold" style={{ color: 'var(--safe)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
                   </div>
                   {sos.status === 'Pending' ? (
-                    <div className="flex gap-2">
-                      <a href={`tel:${sos.contactPhone}`} className="flex-1 py-1.5 rounded-lg border text-center text-xs font-semibold flex items-center justify-center gap-1 transition hover:border-current" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>
-                        <Phone className="w-3 h-3" /> Call
-                      </a>
-                      <button onClick={() => handleFulfillSOS(sos.id)} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 transition hover:opacity-90" style={{ background: 'var(--safe)' }}>
-                        <ShieldCheck className="w-3.5 h-3.5" /> Fulfill
-                      </button>
+                    <div className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs" style={{ background: 'rgba(196,18,48,0.05)', border: '1px solid rgba(196,18,48,0.15)', color: 'var(--muted)' }}>
+                      <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blood)' }} />
+                      <span>
+                        {lang === 'en'
+                          ? `Contact ${sos.contactPhone} — the full number is revealed privately when a donor accepts the request.`
+                          : `رابطہ ${sos.contactPhone} — مکمل نمبر صرف رضاکار کے قبول کرنے پر ظاہر ہوتا ہے۔`}
+                      </span>
+                    </div>
+                  ) : sos.status === 'Cancelled' ? (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
+                      <X className="w-4 h-4" /> {lang === 'en' ? 'Cancelled by requester' : 'درخواست گزار نے منسوخ کر دیا'}
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'rgba(0,196,140,0.08)', color: 'var(--safe)' }}>

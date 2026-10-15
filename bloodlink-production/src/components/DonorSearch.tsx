@@ -4,7 +4,7 @@ import { API_BASE } from "../lib/api";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
 import { 
   Search, MapPin, CheckCircle, ShieldAlert, PhoneCall, Award, 
-  Calendar, ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus 
+  Calendar, ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus, Lock 
 } from "lucide-react";
 
 interface DonorSearchProps {
@@ -63,17 +63,19 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState("");
 
-  // Phone verification (after registration) state
-  const [registeredPhone, setRegisteredPhone] = useState("");
+  // Phone verification (during registration) state
   const [otpStage, setOtpStage] = useState<'idle' | 'sent' | 'verified'>('idle');
   const [otpCode, setOtpCode] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpBusy, setOtpBusy] = useState(false);
   const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
+  // Donor numbers are privacy-protected now: full numbers are never listed
+  // publicly. The only way to reach a donor is through an SOS → contact
+  // request → donor accepts flow. This button shows the masked number and
+  // explains how contact works.
   const handleCall = (donor: Donor) => {
     setCopiedId(donor.id);
-    navigator.clipboard.writeText(donor.phone);
     setTimeout(() => setCopiedId(null), 3000);
   };
 
@@ -113,6 +115,10 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
     }
   };
 
+  // Registration is now OTP-first (privacy design): the form collects the
+  // profile, then a verification code is sent to the phone, and verifying it
+  // creates the donor AND logs the browser in via httpOnly cookies. No donor
+  // record exists until the phone is verified.
   const handleRegisterVolunteer = async (e: FormEvent) => {
     e.preventDefault();
     if (!regName.trim() || !regPhone.trim() || !regLocation.trim()) {
@@ -131,46 +137,26 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
         : "براہ کرم اپنی رضامندی کی تصدیق کریں۔");
       return;
     }
-    
+
     setIsRegistering(true);
     setRegisterError("");
     setRegisterSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/donors/register`, {
+      // Step 1: request the verification code for this phone.
+      const response = await fetch(`${API_BASE}/api/auth/otp/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: regName,
-          bloodGroup: regBlood,
-          phone: regPhone,
-          city: regCity,
-          location: regLocation
-        })
+        body: JSON.stringify({ phone: regPhone })
       });
-
+      const data = await response.json();
       if (response.ok) {
-        const data = await response.json();
-        const normalizedPhone = data.donor?.phone || regPhone;
-        setRegisterSuccess(lang === 'en' ? "Successfully registered as a savior volunteer! Your live card is now added to the Twin Cities Registry." : "بطور رضاکار خون عطیہ دہندہ کامیابی سے اندراج ہو چکا ہے! آپ کا پروفائل لائیو رجسٹری میں شامل کر دیا گیا ہے۔");
-        localStorage.setItem("bloodradar_my_donor_phone", normalizedPhone);
-        setRegisteredPhone(normalizedPhone);
-        setOtpStage('idle');
+        setOtpStage('sent');
         setOtpCode("");
         setOtpError("");
-        setDevOtpHint(null);
-        setRegName("");
-        setRegPhone("");
-        setRegLocation("");
-        setRegBlood("O-");
-        setAgeConfirmed(false);
-        setHealthConfirmed(false);
-        setConsentGiven(false);
-        // Reload parent data to fetch the new donor in search screen
-        onReviewSubmitted();
+        if (data.devOtp) setDevOtpHint(data.devOtp);
       } else {
-        const data = await response.json();
-        setRegisterError(data.error || (lang === 'en' ? "Failed to register. Please try again." : "اندراج ناکام رہا۔ دوبارہ کوشش کریں۔"));
+        setRegisterError(data.error || (lang === 'en' ? "Couldn't send the verification code. Try again." : "کوڈ نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔"));
       }
     } catch (err) {
       setRegisterError(lang === 'en' ? "Network/Server error. Please try again." : "سرور میں خرابی۔ دوبارہ کوشش کریں۔");
@@ -179,45 +165,41 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
     }
   };
 
-  const handleSendOtp = async () => {
+  // Step 2: verify the code — this creates the verified donor profile and
+  // sets the session cookies (the phone is proven, not just claimed).
+  const handleVerifyOtp = async () => {
+    if (otpCode.trim().length !== 6) return;
     setOtpBusy(true);
     setOtpError("");
-    setDevOtpHint(null);
     try {
-      const response = await fetch(`${API_BASE}/api/donors/send-otp`, {
+      const response = await fetch(`${API_BASE}/api/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: registeredPhone })
+        credentials: "include",
+        body: JSON.stringify({
+          phone: regPhone,
+          code: otpCode.trim(),
+          registerAsDonor: true,
+          name: regName,
+          bloodGroup: regBlood,
+          city: regCity,
+          location: regLocation
+        })
       });
       const data = await response.json();
       if (response.ok) {
-        setOtpStage('sent');
-        if (data.otp) setDevOtpHint(data.otp);
-      } else {
-        setOtpError(data.error || (lang === 'en' ? "Couldn't send code. Try again." : "کوڈ نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔"));
-      }
-    } catch {
-      setOtpError(lang === 'en' ? "Network error. Try again." : "نیٹ ورک میں خرابی۔ دوبارہ کوشش کریں۔");
-    } finally {
-      setOtpBusy(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim()) return;
-    setOtpBusy(true);
-    setOtpError("");
-    try {
-      const response = await fetch(`${API_BASE}/api/donors/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: registeredPhone, code: otpCode.trim() })
-      });
-      if (response.ok) {
         setOtpStage('verified');
+        setRegisterSuccess(lang === 'en' ? "Successfully registered as a verified savior volunteer! Your live card is now added to the registry." : "بطور تصدیق شدہ رضاکار خون عطیہ دہندہ کامیابی سے اندراج ہو چکا ہے!");
+        if (data.user?.phone) localStorage.setItem("bloodradar_my_donor_phone", data.user.phone);
+        setRegName("");
+        setRegPhone("");
+        setRegLocation("");
+        setRegBlood("O-");
+        setAgeConfirmed(false);
+        setHealthConfirmed(false);
+        setConsentGiven(false);
         onReviewSubmitted();
       } else {
-        const data = await response.json();
         setOtpError(data.error || (lang === 'en' ? "Incorrect code. Try again." : "غلط کوڈ۔ دوبارہ کوشش کریں۔"));
       }
     } catch {
@@ -466,16 +448,17 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                             <span>{lang === 'en' ? 'Reviews' : 'رائے'} ({totalReviews})</span>
                           </button>
 
-                          {/* Phone call Action */}
+                          {/* Protected number — full numbers are revealed only via the SOS contact flow */}
                           <button
                             id={`btn-call-donor-${donor.id}`}
                             onClick={() => handleCall(donor)}
-                            className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl text-xs font-bold leading-none bg-rose-50 hover:bg-[var(--blood)] text-rose-700 hover:text-white border border-[var(--blood)]/20 transition duration-300 flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+                            title={lang === 'en' ? "Protected number — raise an SOS and request contact to connect" : "محفوظ نمبر — رابطے کے لیے SOS درج کریں"}
+                            className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl text-xs font-bold leading-none bg-rose-50 text-rose-700 border border-[var(--blood)]/20 transition duration-300 flex items-center justify-center gap-1.5 cursor-pointer font-sans"
                           >
-                            <PhoneCall className="w-3.5 h-3.5" />
+                            <Lock className="w-3.5 h-3.5" />
                             <span>
                               {copiedId === donor.id 
-                                ? (lang === 'en' ? 'Copied!' : 'کاپی ہو گیا!') 
+                                ? (lang === 'en' ? 'Use SOS to connect' : 'SOS کے ذریعے رابطہ کریں') 
                                 : donor.phone}
                             </span>
                           </button>
@@ -669,72 +652,16 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
               <p className="text-xs text-[var(--muted)] leading-relaxed max-w-md mx-auto">
                 {registerSuccess}
               </p>
-
-              {otpStage !== 'verified' && (
-                <div className="max-w-sm mx-auto text-left p-3.5 bg-[var(--card)] border border-[var(--safe)]/30 rounded-xl space-y-2.5">
-                  <p className="text-[11px] text-[var(--muted)] font-sans">
-                    {lang === 'en'
-                      ? "You're already listed and visible to patients. Verifying your phone just adds a trusted badge to your profile — optional, and only takes a minute."
-                      : "آپ فوری طور پر مریضوں کو نظر آ رہے ہیں۔ فون نمبر کی تصدیق سے آپ کے پروفائل پر تصدیق شدہ بیج شامل ہو جاتا ہے — یہ اختیاری ہے۔"}
-                  </p>
-
-                  {otpError && <p className="text-[11px] text-red-600 font-sans">⚠️ {otpError}</p>}
-
-                  {otpStage === 'idle' && (
-                    <button
-                      type="button"
-                      onClick={handleSendOtp}
-                      disabled={otpBusy}
-                      className="w-full py-2 rounded-lg bg-[var(--safe)] hover:brightness-110 disabled:opacity-50 text-white font-bold text-[11px] transition font-sans"
-                    >
-                      {otpBusy
-                        ? (lang === 'en' ? 'Sending code...' : 'کوڈ بھیجا جا رہا ہے...')
-                        : (lang === 'en' ? 'Send verification code' : 'تصدیقی کوڈ بھیجیں')}
-                    </button>
-                  )}
-
-                  {otpStage === 'sent' && (
-                    <div className="space-y-2">
-                      {devOtpHint && (
-                        <p className="text-[10px] text-[var(--warn)] bg-[var(--warn)]/10 border border-[var(--warn)]/30 rounded-lg px-2 py-1 font-mono">
-                          {lang === 'en' ? 'Test mode — your code:' : 'ٹیسٹ موڈ — آپ کا کوڈ:'} {devOtpHint}
-                        </p>
-                      )}
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                        placeholder={lang === 'en' ? "6-digit code" : "6 ہندسوں کا کوڈ"}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--safe)]"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifyOtp}
-                        disabled={otpBusy || otpCode.length < 4}
-                        className="w-full py-2 rounded-lg bg-[var(--safe)] hover:brightness-110 disabled:opacity-50 text-white font-bold text-[11px] transition font-sans"
-                      >
-                        {otpBusy
-                          ? (lang === 'en' ? 'Verifying...' : 'تصدیق ہو رہی ہے...')
-                          : (lang === 'en' ? 'Verify' : 'تصدیق کریں')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {otpStage === 'verified' && (
-                <p className="text-[11px] text-[var(--safe)] font-semibold font-sans">
-                  ✅ {lang === 'en' ? "Phone verified — you now have the trusted badge." : "فون تصدیق شدہ — اب آپ کے پروفائل پر تصدیقی بیج موجود ہے۔"}
-                </p>
-              )}
-
+              <p className="text-[11px] text-[var(--safe)] font-semibold font-sans">
+                ✅ {lang === 'en' ? "Phone verified — your profile now carries the trusted badge, and you're logged in on this device." : "فون تصدیق شدہ — اب آپ کے پروفائل پر تصدیقی بیج موجود ہے۔"}
+              </p>
               <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setRegisterSuccess(null);
+                    setOtpStage('idle');
+                    setDevOtpHint(null);
                     changeTab('search');
                   }}
                   className="px-4 py-2 bg-[var(--blood)] hover:brightness-110 text-white font-bold rounded-xl transition shadow-sm cursor-pointer font-sans"
@@ -888,6 +815,41 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                 </label>
               </div>
 
+              {otpStage === 'sent' && (
+                <div className="p-3.5 bg-[var(--safe)]/8/60 border border-[var(--safe)]/30 rounded-xl space-y-2">
+                  <p className="text-[11px] font-bold text-emerald-800 font-sans">
+                    {lang === 'en' ? `Verification code sent to ${regPhone}. Enter it below to create your verified profile.` : `تصدیقی کوڈ ${regPhone} پر بھیج دیا گیا ہے۔`}
+                  </p>
+                  {devOtpHint && (
+                    <p className="text-[10px] text-[var(--warn)] bg-[var(--warn)]/10 border border-[var(--warn)]/30 rounded-lg px-2 py-1 font-mono">
+                      {lang === 'en' ? 'Test mode — your code:' : 'ٹیسٹ موڈ — آپ کا کوڈ:'} {devOtpHint}
+                    </p>
+                  )}
+                  {otpError && <p className="text-[11px] text-red-600 font-sans">⚠️ {otpError}</p>}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                      placeholder={lang === 'en' ? "6-digit code" : "6 ہندسوں کا کوڈ"}
+                      className="flex-1 px-3 py-2 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--safe)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyOtp}
+                      disabled={otpBusy || otpCode.length !== 6}
+                      className="px-4 py-2 rounded-lg bg-[var(--safe)] hover:brightness-110 disabled:opacity-50 text-white font-bold text-[11px] transition font-sans"
+                    >
+                      {otpBusy
+                        ? (lang === 'en' ? 'Verifying...' : 'تصدیق ہو رہی ہے...')
+                        : (lang === 'en' ? 'Verify & Create' : 'تصدیق کریں')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={isRegistering}
@@ -896,8 +858,10 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>
                   {isRegistering 
-                    ? (lang === 'en' ? 'Registering Savior Profile...' : 'اندراج کیا جا رہا ہے...') 
-                    : (lang === 'en' ? 'Submit Savior Volunteer Registration' : 'عطیہ دہندہ رجسٹریشن فارم جمع کریں')}
+                    ? (lang === 'en' ? 'Sending code...' : 'کوڈ بھیجا جا رہا ہے...') 
+                    : otpStage === 'sent'
+                      ? (lang === 'en' ? 'Resend Verification Code' : 'کوڈ دوبارہ بھیجیں')
+                      : (lang === 'en' ? 'Submit & Get Verification Code' : 'فارم جمع کریں اور کوڈ حاصل کریں')}
                 </span>
               </button>
             </form>

@@ -16,17 +16,22 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
   const [logError, setLogError] = useState("");
   const [logSuccess, setLogSuccess] = useState(false);
 
+  // Identity comes from the login session (httpOnly cookies), never from the
+  // client — the backend 401s if you are not the verified owner of this profile.
   const handleToggle = async () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/donors/toggle-availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: donor.phone, isAvailable: !donor.isAvailable })
+        credentials: "include",
+        body: JSON.stringify({ isAvailable: !donor.isAvailable })
       });
       if (response.ok) {
         const data = await response.json();
         onToggleAvailability(data.donor.isAvailable);
+      } else if (response.status === 401) {
+        setLogError(lang === 'en' ? "Session expired — verify your number again." : "سیشن ختم ہو گیا — دوبارہ تصدیق کریں۔");
       }
     } catch (e) {
       console.error(e);
@@ -43,13 +48,15 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
       const response = await fetch(`${API_BASE}/api/donors/log-donation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: donor.phone })
+        credentials: "include"
       });
       const data = await response.json();
       if (response.ok) {
         onDonorUpdated(data.donor);
         setLogSuccess(true);
         setTimeout(() => setLogSuccess(false), 4000);
+      } else if (response.status === 401) {
+        setLogError(lang === 'en' ? "Please verify your phone number first to log donations." : "عطیہ درج کرنے کے لیے پہلے اپنا نمبر تصدیق کریں۔");
       } else {
         setLogError(data.error || (lang === 'en' ? "Couldn't log this donation." : "عطیہ درج نہیں ہو سکا۔"));
       }
@@ -129,6 +136,15 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
           ))}
         </div>
       </div>
+
+      {donor.nextEligibleDate && (
+        <div className="mt-3 relative z-10 flex items-center gap-1.5 text-[10px] font-sans px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.2)', color: 'var(--safe)' }}>
+          <Shield className="w-3 h-3 shrink-0" />
+          <span>
+            {lang === 'en' ? `Eligible to donate again from ${donor.nextEligibleDate}` : `اگلا عطیہ ${donor.nextEligibleDate} سے ممکن`}
+          </span>
+        </div>
+      )}
 
       <div className="mt-4 relative z-10">
         <button

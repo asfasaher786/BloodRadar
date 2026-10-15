@@ -23,6 +23,7 @@ export interface Donor {
   name: string;
   bloodGroup: string;
   phone: string;
+  phoneMasked?: boolean;
   city: string; // any city in SUPPORTED_CITIES (see src/lib/regions.ts)
   location: string;
   latitude: number;
@@ -30,6 +31,7 @@ export interface Donor {
   isAvailable: boolean;
   isVerified: boolean;
   lastDonationDate?: string;
+  nextEligibleDate?: string;
   stats: {
     donationsCount: number;
     streakCount: number;
@@ -77,6 +79,7 @@ export interface EmergencyRequest {
   hospitalId: string;
   hospitalName: string;
   contactPhone: string;
+  phoneMasked?: boolean;
   requiredBy: string;
   reason: string;
   urgency: 'Immediate (SOS)' | 'Urgent' | 'Routine';
