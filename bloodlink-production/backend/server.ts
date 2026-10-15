@@ -1,54 +1,17 @@
 import express from "express";
 import path from "path";
-import cors from "cors";
-import { CONFIG } from "./config/config";
-import authRoutes from "./routes/authRoutes";
-import donorRoutes from "./routes/donorRoutes";
-import hospitalRoutes from "./routes/hospitalRoutes";
-import campRoutes from "./routes/campRoutes";
-import emergencyRoutes from "./routes/emergencyRoutes";
-import notificationRoutes from "./routes/notificationRoutes";
-import mlRoutes from "./routes/mlRoutes";
-import chatRoutes from "./routes/chatRoutes";
-import smsRoutes from "./routes/smsRoutes";
-import statsRoutes from "./routes/statsRoutes";
 import { createServer as createViteServer } from "vite";
+import { createApp } from "./app";
+import { CONFIG } from "./config/config";
+import { logger } from "./lib/logger";
+import { startReminderJob } from "./jobs/reminderJob";
 
-const app = express();
+// Boot entry: builds the app from backend/app.ts, mounts frontend serving
+// (Vite dev middleware or the built dist/), then listens. Only this file
+// knows about listening — tests import createApp directly instead.
+const app = createApp();
 
-// Parse CORS options safely 
-app.use(cors({
-  origin: CONFIG.FRONTEND_URL ? [CONFIG.FRONTEND_URL, "http://localhost:3000", "http://localhost:5173"] : "*",
-  credentials: true
-}));
-
-app.use(express.json());
-
-// 1. Health diagnostic route
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    environment: CONFIG.NODE_ENV,
-    mongoConnected: !!process.env.MONGO_URI
-  });
-});
-
-// 2. Central API route groups
-app.use("/api/auth", authRoutes);
-app.use("/api/donors", donorRoutes);
-app.use("/api/hospitals", hospitalRoutes);
-app.use("/api/camps", campRoutes);
-app.use("/api/emergencies", emergencyRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/ml", mlRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/sms", smsRoutes);
-app.use("/api/stats", statsRoutes);
-
-// 3. Asset serving & Vite system integration
-async function integrateVite() {
+async function start() {
   if (CONFIG.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -58,16 +21,34 @@ async function integrateVite() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(CONFIG.PORT, "0.0.0.0", () => {
-    console.log(`BloodRadar full-stack server running successfully on port ${CONFIG.PORT}`);
+  const server = app.listen(CONFIG.PORT, "0.0.0.0", () => {
+    logger.info(`BloodRadar server listening on port ${CONFIG.PORT} (${CONFIG.NODE_ENV}, db=${CONFIG.MONGO_URI ? "mongodb" : "fallback"}, sms=${CONFIG.SMS_PROVIDER})`);
   });
+
+  // Background jobs (env-gated).
+  startReminderJob();
+
+  // Graceful shutdown: stop accepting connections, let in-flight requests
+  // finish, then exit. Hard-exit fallback so a stuck handle can't hang
+  // Render deployments forever.
+  const shutdown = (signal: string) => {
+    logger.info(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-integrateVite().catch((error) => {
-  console.error("Vite integration crash on server boot:", error);
+start().catch((err) => {
+  logger.error({ err }, "Server boot failed");
+  process.exit(1);
 });
