@@ -1,7 +1,8 @@
 import { MongoClient, Db } from "mongodb";
+import crypto from "crypto";
 import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "../lib/bloodCompatibility";
-import { normalizePhone } from "../lib/phoneUtils";
+import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { resolveCity } from "../config/regions";
 import {
   preseededUsers,
@@ -13,15 +14,20 @@ import {
   preseededNotifications
 } from "../data/seedData";
 
-// Native in-memory variables representing local fallback
-let memoryUsers = [...preseededUsers];
-let memoryDonors = [...preseededDonors];
-let memoryHospitals = [...preseededHospitals];
-let memoryCamps = [...preseededCamps];
-let memoryEmergencies: any[] = [...preseededEmergencies];
-let memoryHistory = [...preseededHistory];
-let memoryNotifications = [...preseededNotifications];
+// Native in-memory variables representing local fallback. Seed phones are
+// normalized on load so they match OTP-verified identities (which are always
+// canonical "+CC..." format). Everything seeded is flagged isSample so the
+// data layer (and future analytics) can tell demo data from real records.
+let memoryUsers = preseededUsers.map(u => ({ ...u, isSample: true }));
+let memoryDonors = preseededDonors.map(d => ({ ...d, phone: normalizePhone(d.phone), isSample: true }));
+let memoryHospitals = preseededHospitals.map(h => ({ ...h, isSample: true }));
+let memoryCamps = preseededCamps.map(c => ({ ...c, isSample: true }));
+let memoryEmergencies: any[] = preseededEmergencies.map(e => ({ ...e, contactPhone: e.contactPhone ? normalizePhone(e.contactPhone) : e.contactPhone, isSample: true }));
+let memoryHistory = preseededHistory.map(h => ({ ...h, isSample: true }));
+let memoryNotifications = preseededNotifications.map(n => ({ ...n, isSample: true }));
 let memoryChats: any[] = [];
+let memoryContactRequests: any[] = [];
+let memoryAuditLog: any[] = [];
 
 const otpStore = new Map();
 export function storeOtp(phone, code, ttlMs = 5 * 60 * 1000) {
@@ -55,33 +61,62 @@ function computeBadges(donationsCount) {
   return badges;
 }
 const MIN_DAYS_BETWEEN_DONATIONS = 90;
-export async function logDonation(phone) {
+
+export function computeNextEligibleDate(lastDonationDate?: string): string | null {
+  if (!lastDonationDate) return null;
+  const d = new Date(lastDonationDate);
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + MIN_DAYS_BETWEEN_DONATIONS);
+  return d.toISOString().split("T")[0];
+}
+
+export async function logDonation(phone): Promise<{ error: string } | { donor: any }> {
   const { mode, db } = await getDb();
   const applyUpdate = (donor) => {
     if (donor.lastDonationDate) {
       const daysSince = (Date.now() - new Date(donor.lastDonationDate).getTime()) / 86400000;
       if (daysSince < MIN_DAYS_BETWEEN_DONATIONS) {
-        return { error: `You can log your next donation in about ${Math.ceil(MIN_DAYS_BETWEEN_DONATIONS - daysSince)} days — your body needs time to recover.` };
+        return { ok: false as const, error: `You can log your next donation in about ${Math.ceil(MIN_DAYS_BETWEEN_DONATIONS - daysSince)} days — your body needs time to recover.` };
       }
     }
     const newDonationsCount = (donor.stats?.donationsCount || 0) + 1;
     const updatedStats = { donationsCount: newDonationsCount, streakCount: (donor.stats?.streakCount || 0) + 1, livesSaved: (donor.stats?.livesSaved || 0) + 3 };
-    return { stats: updatedStats, badges: computeBadges(newDonationsCount), lastDonationDate: new Date().toISOString().split("T")[0] };
+    const lastDonationDate = new Date().toISOString().split("T")[0];
+    return { ok: true as const, stats: updatedStats, badges: computeBadges(newDonationsCount), lastDonationDate, nextEligibleDate: computeNextEligibleDate(lastDonationDate) };
   };
   if (mode === "mongodb" && db) {
     const donor = await db.collection("donors").findOne({ phone });
     if (!donor) return { error: "No donor found with that phone number" };
     const result = applyUpdate(donor);
-    if ("error" in result) return result;
-    const updated = await db.collection("donors").findOneAndUpdate({ phone }, { $set: result }, { returnDocument: "after" });
-    return { donor: updated && updated.value ? updated.value : updated };
+    if (!result.ok) return { error: result.error };
+    const updated = await db.collection("donors").findOneAndUpdate({ phone }, { $set: { stats: result.stats, badges: result.badges, lastDonationDate: result.lastDonationDate, nextEligibleDate: result.nextEligibleDate } }, { returnDocument: "after" });
+    return { donor: updated && (updated as any).value ? (updated as any).value : updated };
   }
   const idx = memoryDonors.findIndex(d => d.phone === phone);
   if (idx === -1) return { error: "No donor found with that phone number" };
   const result = applyUpdate(memoryDonors[idx]);
-  if ("error" in result) return result;
-  Object.assign(memoryDonors[idx], result);
+  if (!result.ok) return { error: result.error };
+  Object.assign(memoryDonors[idx], { stats: result.stats, badges: result.badges, lastDonationDate: result.lastDonationDate, nextEligibleDate: result.nextEligibleDate });
   return { donor: memoryDonors[idx] };
+}
+
+// Generic small field updates on a donor (used by the reminder job).
+export async function updateDonorField(phone: string, patch: Record<string, any>): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("donors").updateOne({ phone }, { $set: patch });
+    return;
+  }
+  const idx = memoryDonors.findIndex(d => d.phone === phone);
+  if (idx !== -1) Object.assign(memoryDonors[idx], patch);
+}
+
+export async function getAcceptedContactRequests(): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("contactrequests").find({ status: "accepted" }).toArray();
+  }
+  return memoryContactRequests.filter(c => c.status === "accepted");
 }
 
 
@@ -112,6 +147,7 @@ export async function getDb(): Promise<{ mode: "mongodb" | "fallback"; db: Db | 
 
     // Seed empty collections
     await seedMongoDbIfEmpty(db);
+    await ensureIndexes(db);
 
     return { mode: "mongodb", db };
   } catch (err) {
@@ -128,43 +164,62 @@ async function seedMongoDbIfEmpty(database: Db) {
     const names = list.map(c => c.name);
 
     if (!names.includes("users") || (await database.collection("users").countDocuments()) === 0) {
-      await database.collection("users").insertMany(preseededUsers);
+      await database.collection("users").insertMany(preseededUsers.map(u => ({ ...u, isSample: true })));
       console.log("Seeded users collection in MongoDB");
     }
 
     if (!names.includes("donors") || (await database.collection("donors").countDocuments()) === 0) {
-      await database.collection("donors").insertMany(preseededDonors);
+      await database.collection("donors").insertMany(preseededDonors.map(d => ({ ...d, phone: normalizePhone(d.phone), isSample: true })));
       console.log("Seeded donors collection in MongoDB");
     }
 
     if (!names.includes("hospitals") || (await database.collection("hospitals").countDocuments()) === 0) {
-      await database.collection("hospitals").insertMany(preseededHospitals);
+      await database.collection("hospitals").insertMany(preseededHospitals.map(h => ({ ...h, isSample: true })));
       console.log("Seeded hospitals collection in MongoDB");
     }
 
     if (!names.includes("camps") || (await database.collection("camps").countDocuments()) === 0) {
-      await database.collection("camps").insertMany(preseededCamps);
+      await database.collection("camps").insertMany(preseededCamps.map(c => ({ ...c, isSample: true })));
       console.log("Seeded camps collection in MongoDB");
     }
 
     if (!names.includes("emergencies") || (await database.collection("emergencies").countDocuments()) === 0) {
       if (preseededEmergencies.length > 0) {
-        await database.collection("emergencies").insertMany(preseededEmergencies);
+        await database.collection("emergencies").insertMany(preseededEmergencies.map(e => ({ ...e, isSample: true })));
         console.log("Seeded emergencies collection in MongoDB");
       }
     }
 
     if (!names.includes("history") || (await database.collection("history").countDocuments()) === 0) {
-      await database.collection("history").insertMany(preseededHistory);
+      await database.collection("history").insertMany(preseededHistory.map(h => ({ ...h, isSample: true })));
       console.log("Seeded history collection in MongoDB");
     }
 
     if (!names.includes("notifications") || (await database.collection("notifications").countDocuments()) === 0) {
-      await database.collection("notifications").insertMany(preseededNotifications);
+      await database.collection("notifications").insertMany(preseededNotifications.map(n => ({ ...n, isSample: true })));
       console.log("Seeded notifications collection in MongoDB");
     }
   } catch (error) {
     console.error("Failed to seed MongoDB:", error);
+  }
+}
+
+// Indexes from the master prompt, plus a few the query patterns demand.
+// Phone uniqueness is the data-level guarantee that one phone = one donor.
+async function ensureIndexes(database: Db) {
+  try {
+    await database.collection("donors").createIndex({ phone: 1 }, { unique: true });
+    await database.collection("donors").createIndex({ city: 1, bloodGroup: 1, isAvailable: 1 });
+    await database.collection("emergencies").createIndex({ status: 1, createdAt: -1 });
+    await database.collection("otps").createIndex({ phone: 1 }, { unique: true });
+    // TTL: OTP records self-destruct ~5 minutes after expiry.
+    await database.collection("otps").createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+    await database.collection("contactrequests").createIndex({ donorPhone: 1, status: 1 });
+    await database.collection("contactrequests").createIndex({ sosId: 1, status: 1 });
+    await database.collection("auditlog").createIndex({ timestamp: -1 });
+  } catch (error) {
+    // Index creation failing must not kill the fallback path — log and move on.
+    console.error("Failed to create MongoDB indexes:", error);
   }
 }
 
@@ -195,11 +250,24 @@ export async function getDonors(): Promise<any[]> {
   return memoryDonors;
 }
 
+export async function getDonorByPhone(phone: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("donors").findOne({ phone });
+  }
+  return memoryDonors.find(d => d.phone === phone) || null;
+}
+
 export async function addDonor(donor: any): Promise<void> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
+    const existing = await db.collection("donors").findOne({ phone: donor.phone });
+    if (existing) throw new Error("A donor with this phone number is already registered.");
     await db.collection("donors").insertOne(donor);
     return;
+  }
+  if (memoryDonors.some(d => d.phone === donor.phone)) {
+    throw new Error("A donor with this phone number is already registered.");
   }
   memoryDonors.push(donor);
 }
@@ -302,6 +370,10 @@ export async function createEmergencyRequest(input) {
   const effectiveBloodGroup = input.bloodGroup || "O-";
   const eligibleDonorTypes = getEligibleDonorsForPatient(effectiveBloodGroup);
   const potentialMatches = donors.filter(d => eligibleDonorTypes.includes(d.bloodGroup) && d.isAvailable && d.city.toLowerCase() === requestCity.toLowerCase());
+  // One-time code proving the requester owns this SOS. Used by the contact-
+  // request and reveal endpoints — the only way a requester (who never logs
+  // in) can prove they are the same person who raised the SOS.
+  const requesterCode = crypto.randomBytes(6).toString("hex");
   const sos = {
     id: "sos-" + Date.now(),
     patientName: input.patientName || "Patient (name not given)",
@@ -316,18 +388,23 @@ export async function createEmergencyRequest(input) {
     status: "Pending",
     city: requestCity,
     createdAt: new Date().toISOString(),
-    matchingDonorsCount: potentialMatches.length
+    matchingDonorsCount: potentialMatches.length,
+    requesterCode
   };
   await addEmergency(sos);
   await addNotification({
     id: "notif-" + Date.now(),
     title: `🚨 SOS BROADCAST: ${sos.bloodGroup} Urgent Request`,
-    message: `${sos.unitsNeeded} units of ${sos.bloodGroup} required urgently for ${sos.patientName} at ${sos.hospitalName}. Please contact ${sos.contactPhone}!`,
+    // Masked on purpose: the public notification must never leak the
+    // requester's full number. Reveal happens only through the
+    // contact-request → accept flow.
+    message: `${sos.unitsNeeded} units of ${sos.bloodGroup} required urgently for ${sos.patientName} at ${sos.hospitalName}. Requested contact: ${maskPhone(sos.contactPhone)}. Open the SOS to respond.`,
     type: "emergency",
     timestamp: new Date().toISOString(),
     read: false
   });
-  return { sos };
+  await addAuditLog({ action: "sos_created", actor: sos.contactPhone, sosId: sos.id, detail: `SOS raised for ${sos.bloodGroup} at ${sos.hospitalName}` });
+  return { sos, requesterCode };
 }
 
 export async function updateEmergencyStatus(sosId: string, status: "Pending" | "Fulfilled" | "Cancelled"): Promise<any> {
@@ -372,6 +449,165 @@ export async function markAllNotificationsRead(): Promise<void> {
     return;
   }
   memoryNotifications = memoryNotifications.map(n => ({ ...n, read: true }));
+}
+
+// ---------------------------------------------------------------
+// Contact-reveal flow (privacy core): requester raises SOS → sends
+// contact request → matching donors get inbox items → donor accepts →
+// both parties' real numbers are revealed to each other, with an
+// audit trail. Nobody's full phone number is public anywhere.
+// ---------------------------------------------------------------
+
+export async function getEmergencyById(sosId: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("emergencies").findOne({ id: sosId });
+  }
+  return memoryEmergencies.find(e => e.id === sosId) || null;
+}
+
+export async function deleteEmergency(sosId: string): Promise<boolean> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const result = await db.collection("emergencies").deleteOne({ id: sosId });
+    return result.deletedCount > 0;
+  }
+  const idx = memoryEmergencies.findIndex(e => e.id === sosId);
+  if (idx === -1) return false;
+  memoryEmergencies.splice(idx, 1);
+  return true;
+}
+
+// Creates one open contact request per matching donor for the given SOS.
+// Returns the list of created requests (donor inbox items).
+export async function createContactRequestsForSos(sos: any): Promise<any[]> {
+  const donors = await getDonors();
+  const eligibleDonorTypes = getEligibleDonorsForPatient(sos.bloodGroup);
+  const matches = donors.filter(d =>
+    eligibleDonorTypes.includes(d.bloodGroup) &&
+    d.isAvailable &&
+    d.city.toLowerCase() === (sos.city || "").toLowerCase()
+  );
+
+  const requests = matches.map((d, i) => ({
+    id: "cr-" + Date.now() + "-" + i,
+    sosId: sos.id,
+    requesterPhone: sos.contactPhone,
+    donorPhone: d.phone,
+    status: "open",
+    createdAt: new Date().toISOString(),
+  }));
+
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    if (requests.length > 0) await db.collection("contactrequests").insertMany(requests);
+  } else {
+    memoryContactRequests.push(...requests);
+  }
+  return requests;
+}
+
+export async function getContactRequestById(id: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("contactrequests").findOne({ id });
+  }
+  return memoryContactRequests.find(c => c.id === id) || null;
+}
+
+export async function getInboxForDonor(phone: string): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("contactrequests").find({ donorPhone: phone }).sort({ createdAt: -1 }).toArray();
+  }
+  return memoryContactRequests
+    .filter(c => c.donorPhone === phone)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+// First accept wins: marks this request accepted and supersedes every other
+// open request for the same SOS so only one donor's number is revealed to
+// the requester (the person whose help was actually taken).
+export async function acceptContactRequest(id: string, donorPhone: string): Promise<{ error: string } | { request: any }> {
+  const { mode, db } = await getDb();
+  const request = await getContactRequestById(id);
+  if (!request) return { error: "Contact request not found." };
+  if (request.donorPhone !== donorPhone) return { error: "This request is not for your account." };
+  if (request.status !== "open") {
+    return { error: request.status === "accepted" ? "You already accepted this request." : "This request is no longer open (someone may have responded first)." };
+  }
+
+  const acceptedAt = new Date().toISOString();
+  if (mode === "mongodb" && db) {
+    await db.collection("contactrequests").updateOne({ id }, { $set: { status: "accepted", acceptedAt } });
+    await db.collection("contactrequests").updateMany(
+      { sosId: request.sosId, id: { $ne: id }, status: "open" },
+      { $set: { status: "superseded" } }
+    );
+  } else {
+    const idx = memoryContactRequests.findIndex(c => c.id === id);
+    memoryContactRequests[idx] = { ...memoryContactRequests[idx], status: "accepted", acceptedAt };
+    memoryContactRequests = memoryContactRequests.map(c =>
+      c.sosId === request.sosId && c.id !== id && c.status === "open"
+        ? { ...c, status: "superseded" }
+        : c
+    );
+  }
+
+  await addAuditLog({
+    action: "contact_request_accepted",
+    actor: donorPhone,
+    target: request.requesterPhone,
+    sosId: request.sosId,
+    detail: "Donor accepted — both parties' phone numbers revealed to each other",
+  });
+
+  const updated = await getContactRequestById(id);
+  return { request: updated };
+}
+
+export async function declineContactRequest(id: string, donorPhone: string): Promise<{ error: string } | { request: any }> {
+  const request = await getContactRequestById(id);
+  if (!request) return { error: "Contact request not found." };
+  if (request.donorPhone !== donorPhone) return { error: "This request is not for your account." };
+  if (request.status !== "open") return { error: "This request is no longer open." };
+
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("contactrequests").updateOne({ id }, { $set: { status: "declined" } });
+  } else {
+    const idx = memoryContactRequests.findIndex(c => c.id === id);
+    memoryContactRequests[idx] = { ...memoryContactRequests[idx], status: "declined" };
+  }
+
+  await addAuditLog({ action: "contact_request_declined", actor: donorPhone, sosId: request.sosId, detail: "Donor declined the contact request" });
+  return { request: await getContactRequestById(id) };
+}
+
+export async function getFulfilledContactRequestForSos(sosId: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("contactrequests").findOne({ sosId, status: "accepted" });
+  }
+  return memoryContactRequests.find(c => c.sosId === sosId && c.status === "accepted") || null;
+}
+
+export async function addAuditLog(entry: any): Promise<void> {
+  const record = { id: "aud-" + Date.now() + "-" + Math.floor(Math.random() * 10000), timestamp: new Date().toISOString(), ...entry };
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("auditlog").insertOne(record);
+    return;
+  }
+  memoryAuditLog.unshift(record);
+}
+
+export async function getAuditLogs(): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("auditlog").find({}).sort({ timestamp: -1 }).limit(500).toArray();
+  }
+  return memoryAuditLog;
 }
 
 export async function getChatSessionHistory(sid: string): Promise<any[]> {
