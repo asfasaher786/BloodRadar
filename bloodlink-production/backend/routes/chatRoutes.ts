@@ -1,23 +1,38 @@
 import { Router } from "express";
+import { z } from "zod";
 import { chatbotClassifier } from "./mlRoutes";
 import { askGemini } from "../services/geminiService";
 import { getChatSessionHistory, addChatMessage } from "../services/dbService";
+import { sanitizeText } from "../lib/sanitize";
 
 const router = Router();
 
-router.post("/", async (req, res) => {
+// B2 fix: a chat message only triggers an emergency alert when the
+// classifier is genuinely confident. The old keyword-matching fallback fired
+// full emergency framing on unrelated chat (e.g. "bleeding" in a movie
+// question) at ~17% confidence. Threshold decided in the Phase 0 audit.
+const EMERGENCY_CONFIDENCE_THRESHOLD = 0.6;
+
+const chatSchema = z.object({
+  message: z.string().trim().min(1, "Message cannot be empty").max(1000, "Message is too long"),
+  sessionId: z.string().trim().max(100).optional(),
+  language: z.enum(["en", "ur"]).optional(),
+});
+
+router.post("/", async (req, res, next) => {
   try {
-    const { message, sessionId, language = "en" } = req.body;
-    if (!message) {
-      return res.status(400).json({ error: "Missing message payload" });
+    const parsed = chatSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Missing message payload" });
     }
 
-    const sid = sessionId || "default-session";
-    const languageEnum: "en" | "ur" = language === "ur" ? "ur" : "en";
+    const message = sanitizeText(parsed.data.message, 1000);
+    const sid = sanitizeText(parsed.data.sessionId || "default-session", 100);
+    const languageEnum: "en" | "ur" = parsed.data.language === "ur" ? "ur" : "en";
 
     // 1. Fetch Session History
     const history = await getChatSessionHistory(sid);
-    
+
     // Save user message
     const userMsg = {
       id: "msg-" + Date.now() + "-user",
@@ -27,25 +42,11 @@ router.post("/", async (req, res) => {
     };
     await addChatMessage(sid, userMsg);
 
-    // 2. Classify intent using native ML Text Classifier
+    // 2. Classify intent using native ML Text Classifier — confidence-gated.
     const chatClassifierResult = chatbotClassifier.predict(message);
-    let isEmergencyAlert = chatClassifierResult.label === "emergency_sos";
-
-    // Fallback emergency heuristics
-    const lowercase = message.toLowerCase();
-    if (!isEmergencyAlert && (
-      lowercase.includes("emergency") ||
-      lowercase.includes("sos") ||
-      lowercase.includes("accident") ||
-      lowercase.includes("dying") ||
-      lowercase.includes("bleeding") ||
-      lowercase.includes("urgent blood") ||
-      lowercase.includes("bhai match") ||
-      lowercase.includes("saans") ||
-      lowercase.includes("khoon")
-    )) {
-      isEmergencyAlert = true;
-    }
+    const isEmergencyAlert =
+      chatClassifierResult.label === "emergency_sos" &&
+      chatClassifierResult.confidence >= EMERGENCY_CONFIDENCE_THRESHOLD;
 
     // 3. Obtain AI response (from Gemini API with metadata or local clinical fallbacks)
     const replyText = await askGemini(
@@ -64,7 +65,7 @@ router.post("/", async (req, res) => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isEmergencyAlert
     };
-    
+
     await addChatMessage(sid, aiMsg);
     const updatedHistory = await getChatSessionHistory(sid);
 
@@ -72,9 +73,8 @@ router.post("/", async (req, res) => {
       reply: aiMsg,
       history: updatedHistory
     });
-
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to process chat: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 

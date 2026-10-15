@@ -1,12 +1,19 @@
 import { Router } from "express";
-import { getDonors, getHospitals, getCamps, getEmergencies } from "../services/dbService";
+import { getDonors, getHospitals, getCamps, getEmergencies, getAcceptedContactRequests, getEmergencyById } from "../services/dbService";
 
 const router = Router();
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
 
 // Real aggregate stats computed live from the actual database — no padded
 // or fabricated numbers. If a number looks unimpressive, that's honest
 // information, not something to inflate for show.
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res, next) => {
   try {
     const [donors, hospitals, camps, emergencies] = await Promise.all([
       getDonors(), getHospitals(), getCamps(), getEmergencies()
@@ -28,6 +35,18 @@ router.get("/", async (req, res) => {
       return { name: h.name, "In Stock Groups": inStock, "Critical/Low Groups": criticalOrLow };
     });
 
+    // Time-to-first-contact: from SOS created to the first donor accepting,
+    // computed only from REAL accepted contact requests. null until data
+    // exists — never fabricated.
+    const acceptedRequests = await getAcceptedContactRequests();
+    const responseTimesMs: number[] = [];
+    for (const a of acceptedRequests) {
+      const sos = await getEmergencyById(a.sosId);
+      if (!sos || !sos.createdAt || !a.acceptedAt) continue;
+      const ms = new Date(a.acceptedAt).getTime() - new Date(sos.createdAt).getTime();
+      if (ms >= 0) responseTimesMs.push(ms);
+    }
+
     res.json({
       totals: {
         totalDonors: donors.length,
@@ -36,10 +55,11 @@ router.get("/", async (req, res) => {
         registeredCamps: camps.length
       },
       bloodDistribution,
-      hospitalAvailability
+      hospitalAvailability,
+      medianTimeToFirstContactMs: median(responseTimesMs)
     });
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to compute stats: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 

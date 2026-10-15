@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
 import { TextClassifier, KMeansClustering } from "../lib/mlEngine";
 import { getDonors } from "../services/dbService";
 import { getRealModelStatus, classifyWithRealModel } from "../lib/realUrgencyModel";
+import { sanitizeText } from "../lib/sanitize";
 
 const router = Router();
 
@@ -30,44 +32,52 @@ const intentLabels = [
 ];
 chatbotClassifier.train(intentDocs, intentLabels);
 
-router.post("/classify-chat", async (req, res) => {
+const textSchema = z.object({
+  text: z.string().trim().min(1, "Missing text query").max(2000, "Text is too long"),
+});
+
+router.post("/classify-chat", async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Missing text query" });
-    const prediction = chatbotClassifier.predict(text);
+    const parsed = textSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Missing text query" });
+    }
+    const prediction = chatbotClassifier.predict(sanitizeText(parsed.data.text, 2000));
     res.json(prediction);
-  } catch (err: any) {
-    res.status(500).json({ error: "Chat taxonomy classification failed: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Real urgency model: trained fresh, every call, on whatever real emergency
 // requests actually exist in the database right now. Honestly reports when
 // there isn't enough real data yet, instead of faking confidence.
-router.get("/real-status", async (req, res) => {
+router.get("/real-status", async (_req, res, next) => {
   try {
     const status = await getRealModelStatus();
     res.json(status);
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to compute real model status: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 
-router.post("/real-classify-urgency", async (req, res) => {
+router.post("/real-classify-urgency", async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Missing text to classify" });
-    const result = await classifyWithRealModel(text);
+    const parsed = textSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Missing text to classify" });
+    }
+    const result = await classifyWithRealModel(sanitizeText(parsed.data.text, 2000));
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: "Real urgency classification failed: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Real donor clustering: genuine K-Means over actual registered donor
 // locations only — no synthetic padding — to help identify where donation
 // camps would reach the most real donors.
-router.get("/real-donor-clustering", async (req, res) => {
+router.get("/real-donor-clustering", async (req, res, next) => {
   try {
     const kParam = parseInt(req.query.k as string) || 3;
     const donors = await getDonors();
@@ -82,8 +92,8 @@ router.get("/real-donor-clustering", async (req, res) => {
     const result = kmeans.fit(donorCoords);
 
     res.json({ ...result, realDonorCount: donors.length });
-  } catch (err: any) {
-    res.status(500).json({ error: "Real donor clustering failed: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 

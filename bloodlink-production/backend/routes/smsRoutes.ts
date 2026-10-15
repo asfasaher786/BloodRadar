@@ -1,11 +1,26 @@
 import { Router } from "express";
+import { z } from "zod";
 import { createEmergencyRequest } from "../services/dbService";
 import { normalizePhone } from "../lib/phoneUtils";
+import { sanitizeText } from "../lib/sanitize";
 import { parseEmergencyTextWithAI } from "../services/geminiService";
 import { resolveCity, DEFAULT_CITY } from "../config/regions";
 
 const router = Router();
 const VALID_GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
+
+// SMS gateways disagree on field names (Twilio: From/Body, others: from/text,
+// msisdn/message). Accept any of them; the route reads the first one present.
+const smsIncomingSchema = z.object({
+  From: z.string().trim().max(30).optional(),
+  from: z.string().trim().max(30).optional(),
+  sender: z.string().trim().max(30).optional(),
+  msisdn: z.string().trim().max(30).optional(),
+  Body: z.string().trim().max(500).optional(),
+  body: z.string().trim().max(500).optional(),
+  text: z.string().trim().max(500).optional(),
+  message: z.string().trim().max(500).optional(),
+});
 
 function parseIncomingText(body: string): { bloodGroup?: string; city?: string } {
   const cleaned = (body || "").trim().toUpperCase();
@@ -18,11 +33,19 @@ function parseIncomingText(body: string): { bloodGroup?: string; city?: string }
   return { bloodGroup, city };
 }
 
-router.post("/incoming", async (req, res) => {
+router.post("/incoming", async (req, res, next) => {
   try {
-    const senderPhone = req.body.From || req.body.from || req.body.sender || req.body.msisdn;
-    const messageBody = req.body.Body || req.body.body || req.body.text || req.body.message || "";
-    if (!senderPhone) return res.status(400).json({ error: "No sender phone number provided by SMS gateway" });
+    const parsed = smsIncomingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Malformed SMS gateway payload" });
+    }
+    const d = parsed.data;
+    const senderPhone = d.From || d.from || d.sender || d.msisdn;
+    const messageBody = sanitizeText(d.Body || d.body || d.text || d.message || "", 500);
+
+    if (!senderPhone) {
+      return res.status(400).json({ error: "No sender phone number provided by SMS gateway" });
+    }
     const normalizedSenderPhone = normalizePhone(senderPhone);
     let { bloodGroup, city } = parseIncomingText(messageBody);
 
@@ -51,8 +74,8 @@ router.post("/incoming", async (req, res) => {
       ? `Request received. ${count} compatible ${bloodGroup} donors nearby have been notified. Stay by your phone.`
       : `Request received, but no ${bloodGroup} donors are currently listed nearby. Please also call the hospital directly.`;
     res.json({ reply });
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to process incoming SMS: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 

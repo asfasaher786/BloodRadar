@@ -3,21 +3,21 @@ import { getNotifications, markAllNotificationsRead } from "../services/dbServic
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res, next) => {
   try {
     const list = await getNotifications();
     res.json(list);
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to load active notifications: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 
-router.post("/read-all", async (req, res) => {
+router.post("/read-all", async (_req, res, next) => {
   try {
     await markAllNotificationsRead();
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to mark notifications as read: " + err.message });
+  } catch (err) {
+    next(err);
   }
 });
 
