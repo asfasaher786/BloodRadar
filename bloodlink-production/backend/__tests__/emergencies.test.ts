@@ -72,11 +72,12 @@ describe("SOS creation and masking", () => {
       .send({ status: "Cancelled", requesterCode: "deadbeefdead" });
     expect(wrongCode.status).toBe(403);
 
-    // Requester may cancel, but may NOT self-fulfill.
+    // Requester may mark fulfilled (blood arrived) — audited for honest stats.
     const fulfilled = await request(app)
       .patch(`/api/emergencies/${sos.id}/status`)
       .send({ status: "Fulfilled", requesterCode });
-    expect(fulfilled.status).toBe(403);
+    expect(fulfilled.status).toBe(200);
+    expect(fulfilled.body.request.status).toBe("Fulfilled");
 
     const cancelled = await request(app)
       .patch(`/api/emergencies/${sos.id}/status`)

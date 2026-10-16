@@ -168,7 +168,8 @@ export const preseededHospitals = [
       "AB-": "Critical" as const,
     },
     rating: 4.5,
-    reviewsCount: 1420
+    reviewsCount: 1420,
+    stockLastUpdated: "2026-09-11"
   },
   {
     id: "hosp-2",
@@ -190,7 +191,8 @@ export const preseededHospitals = [
       "AB-": "Low" as const,
     },
     rating: 4.2,
-    reviewsCount: 980
+    reviewsCount: 980,
+    stockLastUpdated: "2026-09-11"
   },
   {
     id: "hosp-3",
@@ -212,7 +214,8 @@ export const preseededHospitals = [
       "AB-": "Low" as const,
     },
     rating: 4.7,
-    reviewsCount: 2150
+    reviewsCount: 2150,
+    stockLastUpdated: "2026-09-11"
   },
   {
     id: "hosp-4",
@@ -234,7 +237,8 @@ export const preseededHospitals = [
       "AB-": "Critical" as const,
     },
     rating: 4.1,
-    reviewsCount: 1100
+    reviewsCount: 1100,
+    stockLastUpdated: "2026-09-11"
   },
   {
     id: "hosp-5",
@@ -256,7 +260,8 @@ export const preseededHospitals = [
       "AB-": "Low" as const,
     },
     rating: 4.4,
-    reviewsCount: 650
+    reviewsCount: 650,
+    stockLastUpdated: "2026-09-11"
   },
   {
     id: "hosp-6",
@@ -278,7 +283,8 @@ export const preseededHospitals = [
       "AB-": "Critical" as const,
     },
     rating: 4.6,
-    reviewsCount: 890
+    reviewsCount: 890,
+    stockLastUpdated: "2026-09-11"
   }
 ];
 

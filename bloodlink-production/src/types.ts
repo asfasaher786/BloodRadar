@@ -55,6 +55,10 @@ export interface Hospital {
   };
   rating: number;
   reviewsCount: number;
+  // Honest-discovery flags: seeded hospitals are sample data, never live
+  // inventory. stockLastUpdated is the real date the seed data was reviewed.
+  isSample?: boolean;
+  stockLastUpdated?: string; // ISO date, e.g. "2026-09-11"
 }
 
 export interface BloodCamp {
@@ -69,6 +73,8 @@ export interface BloodCamp {
   latitude: number;
   longitude: number;
   registeredCount: number;
+  // Seeded camps are sample listings, not confirmed real-world events.
+  isSample?: boolean;
 }
 
 export interface EmergencyRequest {

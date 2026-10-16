@@ -9,6 +9,7 @@ import {
   createContactRequestsForSos,
   getFulfilledContactRequestForSos,
   deleteEmergency,
+  addAuditLog,
 } from "../services/dbService";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
@@ -148,7 +149,9 @@ router.get("/:id/reveal", async (req, res, next) => {
 });
 
 // Status changes are privileged: the requester (via their one-time code) may
-// cancel their own SOS; admins may set any status for moderation.
+// cancel their own SOS or mark it fulfilled once the blood has arrived;
+// admins may set any status for moderation. Requester actions are audited
+// so "Lives Saved" numbers stay honest (they trace back to a real request).
 router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const id = sanitizeText(req.params.id, 80);
@@ -164,12 +167,21 @@ router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
 
     const isAdmin = req.auth?.role === "admin";
     const isRequester = parsed.data.requesterCode && sos.requesterCode === parsed.data.requesterCode;
-    // Requesters may only cancel their own SOS; admins may set anything.
-    if (!isAdmin && !(isRequester && parsed.data.status === "Cancelled")) {
-      return res.status(403).json({ error: "Only the requester can cancel an SOS, or an admin can change its status." });
+    // Requesters may cancel or mark fulfilled; admins may set anything.
+    const requesterAllowed = isRequester && (parsed.data.status === "Cancelled" || parsed.data.status === "Fulfilled");
+    if (!isAdmin && !requesterAllowed) {
+      return res.status(403).json({ error: "Only the requester can close an SOS, or an admin can change its status." });
     }
 
     const updated = await updateEmergencyStatus(id, parsed.data.status);
+    if (isRequester) {
+      await addAuditLog({
+        action: parsed.data.status === "Fulfilled" ? "sos_fulfilled_by_requester" : "sos_cancelled_by_requester",
+        actor: "requester",
+        sosId: sos.id,
+        detail: `Requester marked SOS ${parsed.data.status} (${sos.bloodGroup}, ${sos.hospitalName || "hospital not specified"})`,
+      });
+    }
     broadcastEvent("emergency-status-changed", { id, status: parsed.data.status });
     res.json({ success: true, request: publicSos(updated) });
   } catch (err) {
