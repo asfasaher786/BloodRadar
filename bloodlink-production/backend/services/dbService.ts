@@ -566,7 +566,14 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
   if (mode === "mongodb" && db) {
     const result = await db.collection("emergencies").findOneAndUpdate(
       { id: sosId },
-      { $set: { status } },
+      {
+        $set: {
+          status,
+          // Real timestamp for the North Star metric (time-to-fulfill) —
+          // only set when the SOS actually reaches Fulfilled.
+          ...(status === "Fulfilled" ? { fulfilledAt: new Date().toISOString() } : {}),
+        },
+      },
       { returnDocument: "after" }
     );
     return result && (result as any).value ? (result as any).value : result;
@@ -574,6 +581,9 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
   const idx = memoryEmergencies.findIndex(e => e.id === sosId);
   if (idx !== -1) {
     memoryEmergencies[idx].status = status;
+    if (status === "Fulfilled") {
+      memoryEmergencies[idx].fulfilledAt = new Date().toISOString();
+    }
     return memoryEmergencies[idx];
   }
   return null;
@@ -650,6 +660,23 @@ export async function addEmergencyReport(sosId: string, reason: string): Promise
   const sos = memoryEmergencies.find(e => e.id === sosId);
   if (!sos) return { ok: false, found: false };
   sos.reports = [...(sos.reports || []), entry];
+  return { ok: true, found: true };
+}
+
+// Moderation (Phase 3): an admin reviewed a reported SOS and decided it is
+// legitimate — the reports are cleared so it drops out of the queue.
+export async function clearEmergencyReports(sosId: string): Promise<{ ok: boolean; found: boolean }> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const result = await db.collection("emergencies").updateOne(
+      { id: sosId },
+      { $set: { reports: [] } }
+    );
+    return { ok: result.matchedCount > 0, found: result.matchedCount > 0 };
+  }
+  const sos = memoryEmergencies.find(e => e.id === sosId);
+  if (!sos) return { ok: false, found: false };
+  sos.reports = [];
   return { ok: true, found: true };
 }
 

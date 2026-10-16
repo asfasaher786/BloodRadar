@@ -208,6 +208,9 @@ export default function OrgPortal({ lang, hospitals, onDataChanged }: Props) {
         setOtpCode("");
         setDevOtpHint("");
         await loadSession();
+        // The parent app tracks the session role (e.g. to show the Admin
+        // Dashboard). Tell it to re-fetch /api/auth/me with the new cookies.
+        onDataChanged();
       } else {
         setLoginError(data.error || "Incorrect code. Try again.");
       }

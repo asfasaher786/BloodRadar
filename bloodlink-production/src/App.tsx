@@ -11,6 +11,7 @@ import {
 
 import SOSRequestForm from "./components/SOSRequestForm";
 import DonorSearch from "./components/DonorSearch";
+import AdminPanel from "./components/AdminPanel";
 import DonorStreakBadge from "./components/DonorStreakBadge";
 import DonorInbox from "./components/DonorInbox";
 import OrgPortal from "./components/OrgPortal";
@@ -118,12 +119,11 @@ export default function App() {
       if (notifRes.ok) setNotifications(await notifRes.json());
       if (meRes.ok) {
         const data = await meRes.json();
-        if (data.user?.donor) {
-          setCurrentUserDonor(data.user.donor);
-          setMeRole(data.user.role || "donor");
-        } else {
-          setCurrentUserDonor(null);
-        }
+        // Role must be set even when the user has no donor profile —
+        // admins and org staff are not donors, but the app still needs
+        // to know who they are (e.g. to show the Admin Dashboard).
+        setMeRole(data.user?.role || "donor");
+        setCurrentUserDonor(data.user?.donor || null);
       }
     } catch (e) {
       console.error("Data load failed:", e);
@@ -623,6 +623,10 @@ export default function App() {
           <div id="donor-search">
             <DonorSearch donors={donors} lang={lang} onReviewSubmitted={loadData} activeTab={activeDonorTab} setActiveTab={setActiveDonorTab} />
           </div>
+
+          {/* Admin Dashboard — only rendered for the admin role so ordinary
+              visitors never see (or fetch) moderation tools. */}
+          {meRole === 'admin' && <AdminPanel onDataChanged={loadData} />}
 
           {/* Organization Portal */}
           <OrgPortal lang={lang} hospitals={hospitals} onDataChanged={loadData} />
