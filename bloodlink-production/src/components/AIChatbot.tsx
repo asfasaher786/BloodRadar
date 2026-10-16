@@ -24,7 +24,19 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speechActive, setSpeechActive] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Honest labeling: ask the backend whether a Gemini key is configured
+  // instead of claiming an AI engine. Null until the check resolves.
+  useEffect(() => {
+    fetch(`${API_BASE}/api/chat/status`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { aiEnabled: boolean } | null) => {
+        setAiEnabled(data ? data.aiEnabled : false);
+      })
+      .catch(() => setAiEnabled(false));
+  }, []);
 
   // Keyboard a11y: move focus into the chat input when the panel opens and
   // let Escape close it (WCAG 2.1.2 / 2.4.3).
@@ -128,7 +140,8 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
           ? "I am blood helper AI. I recommend you access the SOS form or contact PIMS / Holy Family directly. Dial 1122 immediately for urgent issues."
           : "میں خونی معاون ہوں۔ ہم آپ کو ہیلپ لائن 1122 اور قریبی ہسپتالوں سے رابطہ کرنے کا مشورہ دیتے ہیں۔",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isEmergencyAlert: isSOS
+        isEmergencyAlert: isSOS,
+        source: "fallback"
       };
       setMessages(prev => [...prev, fallbackReply]);
       if (isSOS) {
@@ -187,9 +200,13 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
                     BloodRadar Medical Companion
                   </h4>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                    <div className={`w-1.5 h-1.5 rounded-full ${aiEnabled === false ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`}></div>
                     <span className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-mono">
-                      Gemini 3.5 Triage Engine
+                      {aiEnabled === null
+                        ? 'Checking status...'
+                        : aiEnabled
+                          ? 'AI assistant · Gemini'
+                          : 'Offline assistant · rules-based'}
                     </span>
                   </div>
                 </div>
@@ -240,6 +257,11 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
                       <div className="flex items-center gap-1 text-red-650 font-bold tracking-wide uppercase text-[10px] mb-1.5">
                         <AlertOctagon className="w-3.5 h-3.5" />
                         <span>High Urgent Triage Action Requested</span>
+                      </div>
+                    )}
+                    {m.sender === 'ai' && m.source === 'fallback' && (
+                      <div className="flex items-center gap-1 text-[var(--warn)] font-semibold uppercase tracking-wide text-[9px] mb-1.5">
+                        <span>Rules-based answer · no AI connected</span>
                       </div>
                     )}
                     <span className="block whitespace-pre-wrap leading-relaxed">{m.text}</span>

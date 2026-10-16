@@ -116,6 +116,9 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isEmergencyAlert?: boolean;
+  // Honest AI labeling: "gemini" = answered by the configured Gemini model,
+  // "fallback" = local rules-based answer (no AI key set, or AI errored).
+  source?: 'gemini' | 'fallback';
 }
 
 export interface RealtimeNotification {

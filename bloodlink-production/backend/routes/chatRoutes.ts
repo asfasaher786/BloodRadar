@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { chatbotClassifier } from "./mlRoutes";
-import { askGemini } from "../services/geminiService";
+import { askGemini, chatAiEnabled } from "../services/geminiService";
 import { getChatSessionHistory, addChatMessage } from "../services/dbService";
 import { sanitizeText } from "../lib/sanitize";
 
@@ -12,6 +12,16 @@ const router = Router();
 // full emergency framing on unrelated chat (e.g. "bleeding" in a movie
 // question) at ~17% confidence. Threshold decided in the Phase 0 audit.
 const EMERGENCY_CONFIDENCE_THRESHOLD = 0.6;
+
+// Honest AI labeling (Phase 3): the assistant must never claim capabilities
+// it doesn't have. When GEMINI_API_KEY is unset every answer comes from the
+// local rules-based fallback, and both the UI and the reply itself say so.
+router.get("/status", (_req, res) => {
+  res.json({
+    aiEnabled: chatAiEnabled(),
+    model: chatAiEnabled() ? "gemini-1.5-flash" : null
+  });
+});
 
 const chatSchema = z.object({
   message: z.string().trim().min(1, "Message cannot be empty").max(1000, "Message is too long"),
@@ -49,7 +59,7 @@ router.post("/", async (req, res, next) => {
       chatClassifierResult.confidence >= EMERGENCY_CONFIDENCE_THRESHOLD;
 
     // 3. Obtain AI response (from Gemini API with metadata or local clinical fallbacks)
-    const replyText = await askGemini(
+    const { text: replyText, source } = await askGemini(
       message,
       history,
       languageEnum,
@@ -63,7 +73,8 @@ router.post("/", async (req, res, next) => {
       sender: "ai" as const,
       text: replyText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isEmergencyAlert
+      isEmergencyAlert,
+      source
     };
 
     await addChatMessage(sid, aiMsg);

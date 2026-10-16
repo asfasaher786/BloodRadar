@@ -31,7 +31,7 @@ export async function askGemini(
   isEmergencyAlert: boolean,
   classifierLabel: string,
   classifierConfidence: number
-): Promise<string> {
+): Promise<{ text: string; source: "gemini" | "fallback" }> {
   if (ai) {
     try {
       const metadataInstruction = `\n[CLASSIFIER METADATA - Patient Intent: "${classifierLabel}" with ${classifierConfidence}% confidence score. Tailor your answer specifically to address this parsed intent with clinical precision].`;
@@ -51,14 +51,22 @@ export async function askGemini(
         }
       });
 
-      return response.text || "I am processing your query. Please locate the donor list or SOS request on our dashboard for immediate matching.";
+      const text = response.text || "I am processing your query. Please locate the donor list or SOS request on our dashboard for immediate matching.";
+      return { text, source: "gemini" };
     } catch (err) {
       console.error("Gemini API generation error:", err);
-      return getFallbackResponse(message, language, isEmergencyAlert);
+      return { text: getFallbackResponse(message, language, isEmergencyAlert), source: "fallback" };
     }
   }
 
-  return getFallbackResponse(message, language, isEmergencyAlert);
+  return { text: getFallbackResponse(message, language, isEmergencyAlert), source: "fallback" };
+}
+
+// Whether the Gemini key is configured. The UI uses this to label the
+// assistant honestly: with the key it's AI-backed, without it every answer
+// comes from the local rules-based fallback. Never claims AI it can't do.
+export function chatAiEnabled(): boolean {
+  return ai !== null;
 }
 
 // Real, honest AI use: unlike the strict regex parser, this handles messy,
