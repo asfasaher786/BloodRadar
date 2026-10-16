@@ -10,6 +10,7 @@ import {
   getFulfilledContactRequestForSos,
   deleteEmergency,
   addAuditLog,
+  addEmergencyReport,
 } from "../services/dbService";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
@@ -37,15 +38,20 @@ const updateStatusSchema = z.object({
   requesterCode: z.string().trim().max(40).optional(),
 });
 
+const reportSchema = z.object({
+  reason: z.string().trim().max(200).optional(),
+});
+
 const contactRequestSchema = z.object({
   requesterCode: z.string().trim().min(8, "Requester code looks too short").max(40),
 });
 
 // Public board: requester phone masked, requesterCode stripped (it is the
-// requester's secret — exposing it would let anyone impersonate them).
+// requester's secret — exposing it would let anyone impersonate them), and
+// reports stripped (moderator data, only visible to admins in the dashboard).
 function publicSos(sos: any) {
   if (!sos) return sos;
-  const { requesterCode, ...rest } = sos;
+  const { requesterCode, reports, ...rest } = sos;
   return { ...rest, contactPhone: maskPhone(sos.contactPhone), phoneMasked: true };
 }
 
@@ -80,7 +86,21 @@ router.post("/", async (req, res, next) => {
       city: d.city,
     });
 
-    if (result.error) return res.status(400).json({ error: result.error });
+    // Abuse controls (Phase 3): a duplicate is not an error — it is the
+    // honest answer to a double-submit ("we found your open request"),
+    // returned 200 so the frontend can show the existing SOS instead of
+    // broadcasting a second identical one.
+    if (result.duplicate) {
+      return res.status(200).json({
+        success: false,
+        duplicate: true,
+        request: publicSos(result.existing),
+      });
+    }
+    if (result.error) {
+      const status = result.code === "PHONE_LIMIT" ? 429 : 400;
+      return res.status(status).json({ error: result.error });
+    }
     const sosPublic = publicSos(result.sos);
     broadcastEvent("emergency-created", sosPublic);
     res.json({
@@ -89,6 +109,29 @@ router.post("/", async (req, res, next) => {
       // One-time requester code: save it — it proves YOU raised this SOS.
       requesterCode: result.requesterCode,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Abuse controls (Phase 3): anonymous visitors may report a suspicious
+// request. The report is stored on the SOS and audit-logged; admins see
+// it in the dashboard. No auth required — reporting must never be gated.
+router.post("/:id/report", async (req, res, next) => {
+  try {
+    const id = sanitizeText(req.params.id, 80);
+    const parsed = reportSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid report payload" });
+    }
+    const sos = await getEmergencyById(id);
+    if (!sos) return res.status(404).json({ error: "Emergency request not found" });
+    const reason = sanitizeText(parsed.data.reason || "", 200) || "Reported by a visitor (no reason given)";
+    const result = await addEmergencyReport(id, reason);
+    if (!result.ok) return res.status(500).json({ error: "Could not record the report" });
+    await addAuditLog({ action: "sos_reported", actor: "anonymous", sosId: id, detail: reason });
+    broadcastEvent("sos-reported", { id });
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

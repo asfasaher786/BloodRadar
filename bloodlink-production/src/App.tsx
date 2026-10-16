@@ -17,6 +17,7 @@ import Badge from "./components/ui/Badge";
 import PageSkeleton from "./components/PageSkeleton";
 import AnimatedNumber from "./components/ui/AnimatedNumber";
 import Skeleton, { SkeletonStats } from "./components/ui/Skeleton";
+import SosReportButton from "./components/SosReportButton";
 
 // Code-split the heaviest widgets (Leaflet map bundle, charts, ML panel,
 // chatbot) so the first paint ships a small shell — each lazy chunk only
@@ -599,6 +600,7 @@ export default function App() {
                       <CheckCircle2 className="w-4 h-4" /> {lang === 'en' ? 'Fulfilled · Lives Saved' : 'مکمل · زندگی بچائی گئی'}
                     </div>
                   )}
+                  <SosReportButton sosId={sos.id} lang={lang} />
                 </div>
               ))}
             </div>

@@ -65,8 +65,14 @@ router.post("/incoming", async (req, res, next) => {
 
     const result = await createEmergencyRequest({ contactPhone: normalizedSenderPhone, bloodGroup, city, reason: "Emergency SOS via SMS" });
 
+    // Abuse controls (Phase 3): the same phone asking for the same blood
+    // group again gets the honest answer — their open request still stands.
+    if (result.duplicate) {
+      return res.json({ reply: `We already have your open ${bloodGroup} request — no need to send it again. Donors are still being matched.` });
+    }
+
     if (result.error || !result.sos) {
-      return res.json({ reply: "Sorry, we couldn't process your request right now. Please call the nearest hospital directly if this is urgent." });
+      return res.json({ reply: result.error || "Sorry, we couldn't process your request right now. Please call the nearest hospital directly if this is urgent." });
     }
 
     const count = result.sos.matchingDonorsCount;

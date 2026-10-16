@@ -172,3 +172,71 @@ describe("contact-reveal end to end", () => {
     expect(gone.body.find((e: any) => e.id === sos.id)).toBeUndefined();
   });
 });
+
+describe("Abuse controls (Phase 3)", () => {
+  it("answers a duplicate SOS with duplicate:true instead of double-posting", async () => {
+    const app = createApp();
+    const phone = uniquePhone();
+
+    const first = await createSos(app, { contactPhone: phone, bloodGroup: "B-" });
+    const again = await request(app).post("/api/emergencies").send({
+      bloodGroup: "B-",
+      contactPhone: phone,
+    });
+    expect(again.status).toBe(200);
+    expect(again.body.duplicate).toBe(true);
+    expect(again.body.success).toBe(false);
+    expect(again.body.request.id).toBe(first.request.id);
+    // The one-time code is never re-issued in a duplicate response.
+    expect(again.body.requesterCode).toBeUndefined();
+    expect(again.body.request.requesterCode).toBeUndefined();
+
+    // Same phone, different blood group is a NEW need (e.g. another
+    // family member) — not a duplicate.
+    const other = await createSos(app, { contactPhone: phone, bloodGroup: "A+" });
+    expect(other.request.id).not.toBe(first.request.id);
+  });
+
+  it("caps a phone at 3 SOS per 24 hours with an honest 429", async () => {
+    const app = createApp();
+    const phone = uniquePhone();
+    const groups = ["O-", "B-", "A+"];
+
+    for (const g of groups) {
+      const res = await createSos(app, { contactPhone: phone, bloodGroup: g });
+      expect(res.request.id).toBeTruthy();
+    }
+
+    const fourth = await request(app).post("/api/emergencies").send({
+      bloodGroup: "AB+",
+      contactPhone: phone,
+    });
+    expect(fourth.status).toBe(429);
+    expect(fourth.body.error).toContain("hospital");
+  });
+
+  it("records reports anonymously, hides them from the public board, and audits them", async () => {
+    const app = createApp();
+    const { request: sos } = await createSos(app);
+
+    const missing = await request(app).post("/api/emergencies/nope/report").send({ reason: "spam" });
+    expect(missing.status).toBe(404);
+
+    const reported = await request(app)
+      .post(`/api/emergencies/${sos.id}/report`)
+      .send({ reason: "Looks like spam" });
+    expect(reported.status).toBe(200);
+    expect(reported.body.success).toBe(true);
+
+    // Reports are moderator data — never on the public board.
+    const board = await request(app).get("/api/emergencies");
+    const onBoard = board.body.find((e: any) => e.id === sos.id);
+    expect(onBoard.reports).toBeUndefined();
+
+    // The report lands in the admin-only audit trail.
+    const admin = await loginAs(app, "+923331234567");
+    const audit = await admin.agent.get("/api/admin/audit");
+    expect(audit.status).toBe(200);
+    expect(audit.body.some((entry: any) => entry.action === "sos_reported" && entry.sosId === sos.id)).toBe(true);
+  });
+});

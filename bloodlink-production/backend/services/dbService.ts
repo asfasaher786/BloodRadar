@@ -363,6 +363,36 @@ export async function addEmergency(sos: any): Promise<void> {
 
 export async function createEmergencyRequest(input) {
   if (!input.contactPhone) return { error: "A contact phone number is required." };
+
+  // Abuse controls (Phase 3): a real person rarely raises the same need
+  // twice, and never many times in a day — both patterns are spam.
+  const normalizedRequester = normalizePhone(input.contactPhone);
+  const allEmergencies = await getEmergencies();
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+  // Duplicate detection: same phone + same blood group + still Pending.
+  // This is the honest answer to a double-tap or retry — "we found your
+  // open request" instead of broadcasting the same SOS twice.
+  const duplicate = allEmergencies.find(e =>
+    normalizePhone(e.contactPhone || "") === normalizedRequester &&
+    e.bloodGroup === (input.bloodGroup || "O-") &&
+    e.status === "Pending"
+  );
+  if (duplicate) return { duplicate: true, existing: duplicate };
+
+  // Per-phone cap: max 3 SOS per phone per 24 hours (the IP-level rate
+  // limiter covers bursts; this covers rotating IPs / shared networks).
+  const recentFromThisPhone = allEmergencies.filter(e =>
+    normalizePhone(e.contactPhone || "") === normalizedRequester &&
+    new Date(e.createdAt).getTime() > dayAgo
+  );
+  if (recentFromThisPhone.length >= 3) {
+    return {
+      error: "You have raised several requests in the last 24 hours. For further requests, please call the hospital directly.",
+      code: "PHONE_LIMIT",
+    };
+  }
+
   const hospitals = await getHospitals();
   const requestCity = resolveCity(input.city);
   const selectedHospital = hospitals.find(h => h.id === input.hospitalId) || hospitals.find(h => h.city === requestCity) || hospitals[0];
@@ -476,6 +506,27 @@ export async function deleteEmergency(sosId: string): Promise<boolean> {
   if (idx === -1) return false;
   memoryEmergencies.splice(idx, 1);
   return true;
+}
+
+// Abuse controls (Phase 3): anyone can report a suspicious request.
+// Reports accumulate on the SOS and are audited; admins moderate in the
+// dashboard. Reason is sanitized by the caller and capped at 200 chars.
+export async function addEmergencyReport(sosId: string, reason: string): Promise<{ ok: boolean; found: boolean }> {
+  const entry = { at: new Date().toISOString(), reason };
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    // The driver's conditional operator types collapse to `never` for
+    // untyped schemas; the value is a plain serializable object.
+    const result = await db.collection("emergencies").updateOne(
+      { id: sosId },
+      { $push: { reports: entry } } as any
+    );
+    return { ok: result.matchedCount > 0, found: result.matchedCount > 0 };
+  }
+  const sos = memoryEmergencies.find(e => e.id === sosId);
+  if (!sos) return { ok: false, found: false };
+  sos.reports = [...(sos.reports || []), entry];
+  return { ok: true, found: true };
 }
 
 // Creates one open contact request per matching donor for the given SOS.

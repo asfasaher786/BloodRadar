@@ -175,6 +175,32 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
 
       if (response.ok) {
         const d = await response.json();
+        // Abuse controls (Phase 3): the backend answers 200 + duplicate:true
+        // when this phone already has an open request for the same blood
+        // group — a double-tap must not broadcast the same SOS twice. Show
+        // the open request instead; reuse the locally stored requester code
+        // (it belongs to this phone + need).
+        if (d.duplicate) {
+          let restored: MySos | null = null;
+          try {
+            const raw = localStorage.getItem(SOS_STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && parsed.id) restored = parsed as MySos;
+            }
+          } catch { /* ignore corrupt storage */ }
+          setMySos(restored && restored.code && restored.id === d.request?.id ? restored : { id: d.request?.id, code: "", myPhone: contactPhone, request: d.request || null });
+          setReveal({ status: 'waiting' });
+          setMatchingCount(d.request?.matchingDonorsCount ?? 0);
+          setNotifiedCount(null);
+          setPanelMsg(en(
+            "We found your open request for this need — nothing was double-posted.",
+            "اس ضرورت کے لیے آپ کی کھلی درخواست مل گئی — کچھ دوبارہ پوسٹ نہیں ہوا۔"
+          ));
+          setContactPhone("");
+          setSubmitPhase('idle');
+          return;
+        }
         const sos: MySos = { id: d.request?.id, code: d.requesterCode, myPhone: contactPhone, request: d.request || null };
         setMySos(sos);
         setReveal({ status: 'waiting' });

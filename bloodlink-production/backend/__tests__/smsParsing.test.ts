@@ -19,8 +19,11 @@ describe("incoming SMS parsing", () => {
 
   it("accepts lowercase from/text and resolves the city", async () => {
     const app = createApp();
+    // Distinct phone: the first test already has an open O+ request from
+    // +923001112233, and duplicate detection would answer that instead of
+    // creating a second SOS (which is the correct product behavior).
     const res = await request(app).post("/api/sms/incoming").send({
-      from: "03001112233",
+      from: "03001112234",
       text: "o+ rawalpindi",
     });
     expect(res.status).toBe(200);
@@ -28,7 +31,7 @@ describe("incoming SMS parsing", () => {
 
     // The created SOS must carry the normalized sender and parsed city.
     const list = await request(app).get("/api/emergencies");
-    const sos = list.body.find((e: any) => e.contactPhone === "+92 300 •••• 233");
+    const sos = list.body.find((e: any) => e.contactPhone === "+92 300 •••• 234");
     expect(sos).toBeTruthy();
     expect(sos.city).toBe("Rawalpindi");
     expect(sos.bloodGroup).toBe("O+");
