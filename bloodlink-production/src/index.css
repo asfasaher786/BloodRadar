@@ -1,20 +1,93 @@
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+/* ────────────────────────────────────────────────────────────────────────────
+   BloodRadar Design Tokens
+   Crimson + warm paper + gold. Calm by default, urgent only where it matters.
+   Every color below was contrast-checked for WCAG 2.2 AA:
+   - blood on white        6.0:1  (text-safe: blood-ink 10.4:1)
+   - muted on surface      4.9:1
+   - safe-ink on white     5.4:1  (plain "safe" is 2.3:1 — decoration only)
+   - warn-ink on white     5.9:1  (plain "warn" is decoration only)
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Type */
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Brand — crimson */
+  --color-blood: #C41230;        /* primary action surfaces */
+  --color-blood-hover: #A80F29;  /* primary hover / pressed */
+  --color-blood-ink: #8B0000;    /* crimson TEXT on light backgrounds (AA) */
+  --color-blood-soft: #FAE7EA;   /* subtle crimson tint background */
+  --color-blood-border: #E9A8B4; /* crimson borders */
+  --color-pulse: #FF4560;        /* animated pulse accents */
+
+  /* Feedback — safe green */
+  --color-safe: #00C48C;         /* decoration / dots only (low contrast) */
+  --color-safe-ink: #007A57;     /* green TEXT (AA) */
+  --color-safe-soft: #E4F7F0;
+
+  /* Feedback — warn amber */
+  --color-warn: #FFB300;         /* decoration / dots only */
+  --color-warn-ink: #8A5A00;     /* amber TEXT (AA) */
+  --color-warn-soft: #FFF3D6;
+
+  /* Gold accent (from the logo) */
+  --color-gold: #C9A227;
+  --color-gold-ink: #7A6214;
+  --color-gold-soft: #FBF3DC;
+
+  /* Neutrals — warm paper */
+  --color-ink: #0D0D0D;
+  --color-ink-2: #1A1A2E;
+  --color-surface: #F5F0EB;
+  --color-surface-2: #EDE8E3;
+  --color-card: #FFFFFF;
+  --color-muted: #6B6578;
+  --color-border: #E2DDD8;
+  --color-border-strong: #8F8A82; /* form-control borders (≥3:1 vs surface AND white, WCAG 1.4.11) */
+
+  /* Radius (Tailwind defaults kept, plus 3xl for hero cards) */
+  --radius-3xl: 1.5rem;
+
+  /* Elevation */
+  --shadow-1: 0 1px 3px rgb(13 13 13 / 0.08);
+  --shadow-2: 0 4px 12px rgb(13 13 13 / 0.10);
+  --shadow-3: 0 12px 32px rgb(13 13 13 / 0.16);
+}
+
+/* Legacy var() aliases — older inline styles keep working during migration.
+   New code should use the Tailwind utilities (bg-blood, text-muted, …). */
 :root {
-  --blood: #C41230;
-  --blood-dark: #8B0000;
-  --blood-light: #FF1744;
-  --pulse: #FF4560;
-  --safe: #00C48C;
-  --warn: #FFB300;
-  --ink: #0D0D0D;
-  --ink-2: #1A1A2E;
-  --surface: #F5F0EB;
-  --surface-2: #EDE8E3;
-  --card: #FFFFFF;
-  --muted: #6B6578;
-  --border: #E2DDD8;
+  --blood: var(--color-blood);
+  --blood-dark: var(--color-blood-ink);
+  --blood-light: var(--color-pulse);
+  --pulse: var(--color-pulse);
+  --safe: var(--color-safe);
+  --safe-ink: var(--color-safe-ink);
+  --warn: var(--color-warn);
+  --warn-ink: var(--color-warn-ink);
+  --warn-soft: var(--color-warn-soft);
+  --safe-soft: var(--color-safe-soft);
+  --blood-soft: var(--color-blood-soft);
+  --gold: var(--color-gold);
+  --ink: var(--color-ink);
+  --ink-2: var(--color-ink-2);
+  --surface: var(--color-surface);
+  --surface-2: var(--color-surface-2);
+  --card: var(--color-card);
+  --muted: var(--color-muted);
+  --border: var(--color-border);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -22,16 +95,28 @@
 html { scroll-behavior: smooth; }
 
 body {
-  font-family: 'DM Sans', sans-serif;
-  background-color: var(--surface);
-  color: var(--ink);
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-.font-display { font-family: 'Syne', sans-serif; }
-.font-mono { font-family: 'JetBrains Mono', monospace; }
+/* ── Accessibility baseline ─────────────────────────────────────────────── */
 
-/* Blood drop pulse animation */
+/* Visible, consistent focus ring everywhere (WCAG 2.4.7 / 2.4.13). */
+:focus-visible {
+  outline: 2px solid var(--color-blood);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+::selection { background: var(--color-blood); color: #fff; }
+
+/* Keyboard users: never hide focus. */
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── Motion (purposeful, fast) ──────────────────────────────────────────── */
+
 @keyframes blood-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.15); opacity: 0.85; }
@@ -40,31 +125,86 @@ body {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
 }
-@keyframes fadeUp {
+@keyframes fade-up {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 @keyframes sos-flash {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(196,18,48,0); }
-  50% { box-shadow: 0 0 0 12px rgba(196,18,48,0.25); }
+  0%, 100% { box-shadow: 0 0 0 0 rgb(196 18 48 / 0); }
+  50% { box-shadow: 0 0 0 12px rgb(196 18 48 / 0.25); }
+}
+/* Highlight a list row the moment a live update lands. */
+@keyframes live-highlight {
+  0% { background-color: var(--color-blood-soft); }
+  100% { background-color: transparent; }
 }
 
 .blood-pulse { animation: blood-pulse 2s ease-in-out infinite; }
-.fade-up { animation: fadeUp 0.5s ease forwards; }
+.fade-up { animation: fade-up var(--duration-slow) var(--ease-standard) forwards; }
+.fade-in { animation: fade-in var(--duration-base) var(--ease-standard) forwards; }
+.scale-in { animation: scale-in var(--duration-base) var(--ease-standard) forwards; }
 .sos-ring { animation: sos-flash 1.5s ease infinite; }
+.live-highlight { animation: live-highlight 1.2s var(--ease-standard); }
 
+/* Skeleton loader — used by <Skeleton/> and loading states. */
 .skeleton {
-  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-border) 50%, var(--color-surface-2) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
 
+/* ── Reduced motion (WCAG 2.3.3) — disable ALL non-essential motion. ───── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-track { background: var(--color-surface); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+
+/* ── Leaflet map: brand restyle of markers & clusters. ─────────────────── */
+/* Markers are rendered via L.divIcon HTML; these classes live on the
+   injected elements inside the map pane (outside React, so plain CSS). */
+.bloodradar-div-icon { background: transparent; border: none; }
+.bloodradar-marker { transition: transform 0.2s ease; }
+.bloodradar-marker-selected {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 5px rgba(196, 18, 48, 0.25) !important;
+}
+
+/* Cluster circles follow the brand (the plugin's default green is replaced).
+   The doubled class selectors win against the plugin's own single-class
+   rules regardless of stylesheet load order. */
+.marker-cluster.marker-cluster-small,
+.marker-cluster.marker-cluster-medium,
+.marker-cluster.marker-cluster-large {
+  background-color: rgba(196, 18, 48, 0.14);
+  border: 2px solid rgba(196, 18, 48, 0.45);
+}
+.marker-cluster.marker-cluster-small div,
+.marker-cluster.marker-cluster-medium div,
+.marker-cluster.marker-cluster-large div {
+  background-color: var(--color-blood, #C41230);
+  color: #ffffff;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+}
