@@ -7,6 +7,7 @@ import {
   getDonors,
   getHospitals,
   getContactRequestStats,
+  getApprovedOrganizationForPhone,
   updateEmergencyStatus,
   createEmergencyRequest,
   createContactRequestsForSos,
@@ -70,13 +71,24 @@ router.get("/", async (_req, res, next) => {
 
 // Anonymous by design: requesters never need an account to raise an SOS.
 // The requester identity is their contact phone alone — validated here.
-router.post("/", async (req, res, next) => {
+// Optional auth: when a signed-in approved organization posts, the SOS is
+// labelled with the org's identity so donors know a verified organization
+// is vouching for it. Anonymous posting stays exactly as before.
+router.post("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const parsed = createSosSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid SOS request" });
     }
     const d = parsed.data;
+
+    // Organization portal (Phase 3): a signed-in org member posting on
+    // behalf of a patient. Only APPROVED orgs get the label — a pending
+    // application posts as an ordinary anonymous requester.
+    let org: any = null;
+    if (req.auth && (req.auth.role === "ngo" || req.auth.role === "hospital_staff")) {
+      org = await getApprovedOrganizationForPhone(req.auth.sub);
+    }
 
     const result = await createEmergencyRequest({
       contactPhone: normalizePhone(d.contactPhone),
@@ -88,6 +100,7 @@ router.post("/", async (req, res, next) => {
       reason: sanitizeText(d.reason || "", 200) || "Surgical critical emergency",
       urgency: sanitizeText(d.urgency || "", 40),
       city: d.city,
+      org: org ? { id: org.id, name: org.name } : null,
     });
 
     // Abuse controls (Phase 3): a duplicate is not an error — it is the
@@ -232,8 +245,9 @@ router.get("/:id/reveal", async (req, res, next) => {
 
 // Status changes are privileged: the requester (via their one-time code) may
 // cancel their own SOS or mark it fulfilled once the blood has arrived;
-// admins may set any status for moderation. Requester actions are audited
-// so "Lives Saved" numbers stay honest (they trace back to a real request).
+// admins may set any status for moderation; an approved organization member
+// may close the requests their own org posted on behalf of a patient.
+// All of these are audited so "Lives Saved" numbers stay honest.
 router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const id = sanitizeText(req.params.id, 80);
@@ -249,10 +263,18 @@ router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
 
     const isAdmin = req.auth?.role === "admin";
     const isRequester = parsed.data.requesterCode && sos.requesterCode === parsed.data.requesterCode;
+    // Org members close only their own org's requests, and only to a
+    // terminal state (Fulfilled/Cancelled) — never back to Pending.
+    let isOrgOwner = false;
+    if (req.auth && (req.auth.role === "ngo" || req.auth.role === "hospital_staff") && sos.orgId) {
+      const org = await getApprovedOrganizationForPhone(req.auth.sub);
+      isOrgOwner = Boolean(org && org.id === sos.orgId);
+    }
     // Requesters may cancel or mark fulfilled; admins may set anything.
     const requesterAllowed = isRequester && (parsed.data.status === "Cancelled" || parsed.data.status === "Fulfilled");
-    if (!isAdmin && !requesterAllowed) {
-      return res.status(403).json({ error: "Only the requester can close an SOS, or an admin can change its status." });
+    const orgAllowed = isOrgOwner && (parsed.data.status === "Cancelled" || parsed.data.status === "Fulfilled");
+    if (!isAdmin && !requesterAllowed && !orgAllowed) {
+      return res.status(403).json({ error: "Only the requester or the organization that posted it can close this SOS, or an admin can change its status." });
     }
 
     const updated = await updateEmergencyStatus(id, parsed.data.status);
@@ -262,6 +284,14 @@ router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
         actor: "requester",
         sosId: sos.id,
         detail: `Requester marked SOS ${parsed.data.status} (${sos.bloodGroup}, ${sos.hospitalName || "hospital not specified"})`,
+      });
+    }
+    if (isOrgOwner) {
+      await addAuditLog({
+        action: parsed.data.status === "Fulfilled" ? "sos_fulfilled_by_org" : "sos_cancelled_by_org",
+        actor: req.auth!.sub,
+        sosId: sos.id,
+        detail: `${sos.orgName || "Organization"} marked its SOS ${parsed.data.status} (${sos.bloodGroup}, ${sos.hospitalName || "hospital not specified"})`,
       });
     }
     broadcastEvent("emergency-status-changed", { id, status: parsed.data.status });

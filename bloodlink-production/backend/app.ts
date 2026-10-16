@@ -19,6 +19,7 @@ import chatRoutes from "./routes/chatRoutes";
 import smsRoutes from "./routes/smsRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import adminRoutes from "./routes/adminRoutes";
+import orgRoutes from "./routes/orgRoutes";
 
 // The Express app is built by a factory so tests (supertest) can import it
 // without starting a listener or mounting the Vite dev middleware. The
@@ -98,6 +99,7 @@ export function createApp() {
   app.use("/api/sms", smsRoutes);
   app.use("/api/stats", statsRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api/orgs", orgRoutes);
 
   // Live event stream (SSE). PII-free by contract — see services/events.ts.
   app.get("/api/events", (_req, res) => {

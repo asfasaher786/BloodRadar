@@ -13,6 +13,7 @@ import SOSRequestForm from "./components/SOSRequestForm";
 import DonorSearch from "./components/DonorSearch";
 import DonorStreakBadge from "./components/DonorStreakBadge";
 import DonorInbox from "./components/DonorInbox";
+import OrgPortal from "./components/OrgPortal";
 import Badge from "./components/ui/Badge";
 import PageSkeleton from "./components/PageSkeleton";
 import AnimatedNumber from "./components/ui/AnimatedNumber";
@@ -336,6 +337,7 @@ export default function App() {
               { href: '#emergencies-board', icon: Activity, label: lang === 'en' ? 'Live Emergencies' : 'لائیو ہنگامی' },
               { href: '#sos-form', icon: AlertTriangle, label: lang === 'en' ? 'Request Blood (SOS)' : 'خون مانگیں (SOS)' },
               { href: '#donor-search', icon: Users, label: lang === 'en' ? 'Find Donors' : 'عطیہ دہندگان تلاش کریں' },
+              { href: '#org-portal', icon: Building2, label: 'For Organizations' },
             ].map(({ href, icon: Icon, label }) => (
               <a key={href} href={href} onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition hover:bg-surface-2"
@@ -579,6 +581,9 @@ export default function App() {
                   <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{sos.reason}</p>
                   <div className="text-[10px] space-y-1 mb-3" style={{ color: 'var(--muted)' }}>
                     <div>🏥 {sos.hospitalName}</div>
+                    {sos.postedBy === 'organization' && sos.orgName && (
+                      <div>🏛️ Posted by <span className="font-semibold" style={{ color: 'var(--ink)' }}>{sos.orgName}</span> · verified organization</div>
+                    )}
                     <div>⏰ Required by <span className="font-semibold" style={{ color: 'var(--blood)' }}>{sos.requiredBy}</span></div>
                     <div>👥 <span className="font-semibold" style={{ color: 'var(--safe-ink)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
                   </div>
@@ -618,6 +623,9 @@ export default function App() {
           <div id="donor-search">
             <DonorSearch donors={donors} lang={lang} onReviewSubmitted={loadData} activeTab={activeDonorTab} setActiveTab={setActiveDonorTab} />
           </div>
+
+          {/* Organization Portal */}
+          <OrgPortal lang={lang} hospitals={hospitals} onDataChanged={loadData} />
 
           {/* Emergency Hotlines */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>

@@ -21,7 +21,7 @@ import {
 // data layer (and future analytics) can tell demo data from real records.
 let memoryUsers = preseededUsers.map(u => ({ ...u, isSample: true }));
 let memoryDonors = preseededDonors.map(d => ({ ...d, phone: normalizePhone(d.phone), isSample: true }));
-let memoryHospitals = preseededHospitals.map(h => ({ ...h, isSample: true }));
+let memoryHospitals: any[] = preseededHospitals.map(h => ({ ...h, isSample: true }));
 let memoryCamps = preseededCamps.map(c => ({ ...c, isSample: true }));
 let memoryEmergencies: any[] = preseededEmergencies.map(e => ({ ...e, contactPhone: e.contactPhone ? normalizePhone(e.contactPhone) : e.contactPhone, isSample: true }));
 let memoryHistory = preseededHistory.map(h => ({ ...h, isSample: true }));
@@ -29,6 +29,7 @@ let memoryNotifications = preseededNotifications.map(n => ({ ...n, isSample: tru
 let memoryChats: any[] = [];
 let memoryContactRequests: any[] = [];
 let memoryAuditLog: any[] = [];
+let memoryOrganizations: any[] = [];
 
 const otpStore = new Map();
 export function storeOtp(phone, code, ttlMs = 5 * 60 * 1000) {
@@ -200,6 +201,13 @@ async function seedMongoDbIfEmpty(database: Db) {
       await database.collection("notifications").insertMany(preseededNotifications.map(n => ({ ...n, isSample: true })));
       console.log("Seeded notifications collection in MongoDB");
     }
+
+    // Organizations start empty — a real org record only exists once a
+    // verified phone applies and an admin approves it. Never fabricated.
+    if (!names.includes("organizations")) {
+      await database.createCollection("organizations");
+      console.log("Created organizations collection in MongoDB");
+    }
   } catch (error) {
     console.error("Failed to seed MongoDB:", error);
   }
@@ -218,6 +226,8 @@ async function ensureIndexes(database: Db) {
     await database.collection("contactrequests").createIndex({ donorPhone: 1, status: 1 });
     await database.collection("contactrequests").createIndex({ sosId: 1, status: 1 });
     await database.collection("auditlog").createIndex({ timestamp: -1 });
+    await database.collection("organizations").createIndex({ contactPhone: 1 }, { unique: true });
+    await database.collection("organizations").createIndex({ status: 1 });
   } catch (error) {
     // Index creation failing must not kill the fallback path — log and move on.
     console.error("Failed to create MongoDB indexes:", error);
@@ -327,6 +337,106 @@ export async function getCamps(): Promise<any[]> {
   return memoryCamps;
 }
 
+// ---------------------------------------------------------------
+// Organizations (Phase 3): lightweight NGO/hospital portal. A
+// verified phone applies; an admin approves. Approved hospital
+// organizations may update their blood bank's stock with timestamps;
+// approved NGO/hospital organizations post SOS on behalf of patients
+// and can close the requests they posted. One organization per phone —
+// a phone identity owns exactly one org record.
+// ---------------------------------------------------------------
+
+export async function getOrganizations(): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("organizations").find({}).toArray();
+  }
+  return memoryOrganizations;
+}
+
+export async function getOrganizationById(id: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("organizations").findOne({ id });
+  }
+  return memoryOrganizations.find(o => o.id === id) || null;
+}
+
+// Any org record owned by this phone (whatever its status) — used to
+// enforce "one org per phone" and to show the applicant their status.
+export async function getOrganizationForPhone(phone: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("organizations").findOne({ contactPhone: phone });
+  }
+  return memoryOrganizations.find(o => o.contactPhone === phone) || null;
+}
+
+// Only approved orgs grant privileges (post-on-behalf, stock updates).
+export async function getApprovedOrganizationForPhone(phone: string): Promise<any> {
+  const org = await getOrganizationForPhone(phone);
+  return org && org.status === "approved" ? org : null;
+}
+
+export async function addOrganization(org: any): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const existing = await db.collection("organizations").findOne({ contactPhone: org.contactPhone });
+    if (existing) throw new Error("An organization application already exists for this phone number.");
+    await db.collection("organizations").insertOne(org);
+    return;
+  }
+  if (memoryOrganizations.some(o => o.contactPhone === org.contactPhone)) {
+    throw new Error("An organization application already exists for this phone number.");
+  }
+  memoryOrganizations.push(org);
+}
+
+export async function setOrganizationStatus(id: string, status: "approved" | "rejected", reviewer: string): Promise<any> {
+  const patch = { status, reviewedAt: new Date().toISOString(), reviewedBy: reviewer };
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const result = await db.collection("organizations").findOneAndUpdate(
+      { id },
+      { $set: patch },
+      { returnDocument: "after" }
+    );
+    return result && (result as any).value ? (result as any).value : result;
+  }
+  const idx = memoryOrganizations.findIndex(o => o.id === id);
+  if (idx !== -1) {
+    Object.assign(memoryOrganizations[idx], patch);
+    return memoryOrganizations[idx];
+  }
+  return null;
+}
+
+// Blood-bank stock update (hospital orgs only — enforced by the route).
+// Merges only the groups the caller provided, and stamps the review date
+// so "stock last reviewed" is a real timestamp, not a made-up number.
+export async function updateHospitalStock(hospitalId: string, availability: Record<string, string>): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const hospital = await db.collection("hospitals").findOne({ id: hospitalId });
+    if (!hospital) return null;
+    const merged = { ...(hospital.bloodAvailability || {}), ...availability };
+    const result = await db.collection("hospitals").findOneAndUpdate(
+      { id: hospitalId },
+      { $set: { bloodAvailability: merged, stockLastUpdated: new Date().toISOString().split("T")[0] } },
+      { returnDocument: "after" }
+    );
+    return result && (result as any).value ? (result as any).value : result;
+  }
+  const idx = memoryHospitals.findIndex(h => h.id === hospitalId);
+  if (idx === -1) return null;
+  memoryHospitals[idx].bloodAvailability = {
+    ...(memoryHospitals[idx].bloodAvailability || {}),
+    ...availability,
+  };
+  memoryHospitals[idx].stockLastUpdated = new Date().toISOString().split("T")[0];
+  return memoryHospitals[idx];
+}
+
 export async function incrementCampRegistration(campId: string): Promise<any> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
@@ -371,23 +481,32 @@ export async function createEmergencyRequest(input) {
   const allEmergencies = await getEmergencies();
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
-  // Duplicate detection: same phone + same blood group + still Pending.
-  // This is the honest answer to a double-tap or retry — "we found your
-  // open request" instead of broadcasting the same SOS twice.
-  const duplicate = allEmergencies.find(e =>
-    normalizePhone(e.contactPhone || "") === normalizedRequester &&
-    e.bloodGroup === (input.bloodGroup || "O-") &&
-    e.status === "Pending"
-  );
-  if (duplicate) return { duplicate: true, existing: duplicate };
+  // Approved organizations post on behalf of many different patients, so
+  // "same phone + same group + still pending" is NOT spam for them (two
+  // O+ patients can both be bleeding today). Their cap is higher instead.
+  const postedByOrg = Boolean(input.org && input.org.id && input.org.name);
+
+  if (!postedByOrg) {
+    // Duplicate detection: same phone + same blood group + still Pending.
+    // This is the honest answer to a double-tap or retry — "we found your
+    // open request" instead of broadcasting the same SOS twice.
+    const duplicate = allEmergencies.find(e =>
+      normalizePhone(e.contactPhone || "") === normalizedRequester &&
+      e.bloodGroup === (input.bloodGroup || "O-") &&
+      e.status === "Pending"
+    );
+    if (duplicate) return { duplicate: true, existing: duplicate };
+  }
 
   // Per-phone cap: max 3 SOS per phone per 24 hours (the IP-level rate
   // limiter covers bursts; this covers rotating IPs / shared networks).
+  // Verified orgs get 10 — a hospital ward may raise several in a day.
+  const dailyCap = postedByOrg ? 10 : 3;
   const recentFromThisPhone = allEmergencies.filter(e =>
     normalizePhone(e.contactPhone || "") === normalizedRequester &&
     new Date(e.createdAt).getTime() > dayAgo
   );
-  if (recentFromThisPhone.length >= 3) {
+  if (recentFromThisPhone.length >= dailyCap) {
     return {
       error: "You have raised several requests in the last 24 hours. For further requests, please call the hospital directly.",
       code: "PHONE_LIMIT",
@@ -420,7 +539,11 @@ export async function createEmergencyRequest(input) {
     city: requestCity,
     createdAt: new Date().toISOString(),
     matchingDonorsCount: potentialMatches.length,
-    requesterCode
+    requesterCode,
+    // Organization portal (Phase 3): requests posted on behalf of a patient
+    // by an approved org are labelled with the org's identity so donors know
+    // a verified organization is vouching for the request.
+    ...(postedByOrg ? { orgId: input.org.id, orgName: input.org.name, postedBy: "organization" } : {}),
   };
   await addEmergency(sos);
   await addNotification({

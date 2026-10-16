@@ -4,7 +4,7 @@ import { CONFIG } from "../config/config";
 import { normalizePhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
 import { sendOtpToPhone, verifyOtp } from "../services/otpService";
-import { addDonor, getDonorByPhone, computeNextEligibleDate } from "../services/dbService";
+import { addDonor, getDonorByPhone, computeNextEligibleDate, getApprovedOrganizationForPhone } from "../services/dbService";
 import { resolveCity, getCityCenter } from "../config/regions";
 import {
   AUTH_COOKIE_NAMES,
@@ -50,6 +50,20 @@ function resolveRoleForPhone(phone: string): Role {
   if (CONFIG.ADMIN_PHONES.includes(phone)) return "admin";
   if (CONFIG.STAFF_PHONES.includes(phone)) return "hospital_staff";
   if (CONFIG.NGO_PHONES.includes(phone)) return "ngo";
+  return "donor";
+}
+
+// Organization portal (Phase 3): an approved org record is a real account —
+// its owner's verified phone resolves to the org role at login. Env phone
+// lists stay the bootstrap for the first admins; org records are the
+// scalable path (admin approves, founder doesn't redeploy for each org).
+async function resolveRoleForPhoneWithOrgs(phone: string): Promise<Role> {
+  const envRole = resolveRoleForPhone(phone);
+  if (envRole !== "donor") return envRole;
+  const org = await getApprovedOrganizationForPhone(phone);
+  if (org) {
+    return org.type === "hospital" ? "hospital_staff" : "ngo";
+  }
   return "donor";
 }
 
@@ -134,7 +148,7 @@ router.post("/otp/verify", async (req, res, next) => {
       await addDonor(donor);
     }
 
-    const role = resolveRoleForPhone(phone);
+    const role = await resolveRoleForPhoneWithOrgs(phone);
     setAuthCookies(res, phone, role);
 
     res.json({ success: true, user: { phone, role, donor: enrichDonor(donor) } });
@@ -155,7 +169,7 @@ router.post("/refresh", async (req, res, next) => {
       return res.status(401).json({ error: "Session expired. Please log in again." });
     }
     const donor = await getDonorByPhone(payload.sub);
-    const role = resolveRoleForPhone(payload.sub);
+    const role = await resolveRoleForPhoneWithOrgs(payload.sub);
     setAuthCookies(res, payload.sub, role);
     res.json({ success: true, user: { phone: payload.sub, role, donor: enrichDonor(donor) } });
   } catch (err) {

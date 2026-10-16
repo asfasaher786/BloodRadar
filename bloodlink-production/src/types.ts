@@ -93,6 +93,11 @@ export interface EmergencyRequest {
   city: string; // any city in SUPPORTED_CITIES (see src/lib/regions.ts)
   createdAt: string;
   matchingDonorsCount: number;
+  // Organization portal (Phase 3): present only when an approved NGO/hospital
+  // organization posted this request on behalf of the patient.
+  orgId?: string;
+  orgName?: string;
+  postedBy?: 'organization';
 }
 
 export interface DonationHistory {
