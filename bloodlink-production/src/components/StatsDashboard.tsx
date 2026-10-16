@@ -134,7 +134,7 @@ export default function StatsDashboard({ lang }: StatsDashboardProps) {
                     paddingAngle={3}
                     dataKey="count"
                     nameKey="bloodGroup"
-                    label={({ bloodGroup, percent }) => `${bloodGroup} (${(percent * 100).toFixed(0)}%)`}
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                   >
                     {stats.bloodDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

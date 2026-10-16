@@ -77,10 +77,10 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
           <span className="px-2 py-0.5 rounded text-[10px] font-mono tracking-widest font-bold" style={{ background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.2)', color: 'var(--blood)' }}>
             {lang === 'en' ? 'Savior Account Profile' : 'رضاکار پروفائل'}
           </span>
-          <h4 className="text-sm font-display font-bold mt-1.5 flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
+          <h2 className="text-sm font-display font-bold mt-1.5 flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
             {donor.name}
             <span className="w-2 h-2 rounded-full" style={{ background: 'var(--safe)' }}></span>
-          </h4>
+          </h2>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
             {lang === 'en' ? `Registered ${donor.bloodGroup} Emergency Hero` : 'مستقل ہیرو'}
           </p>
@@ -93,8 +93,8 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
 
       <div className="grid grid-cols-3 gap-3.5 mt-5 border-t border-b py-3.5 relative z-10 text-center font-sans text-xs" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <div className="flex items-center justify-center gap-1 font-bold" style={{ color: 'var(--warn)' }}>
-            <Zap className="w-4 h-4" style={{ fill: 'var(--warn)' }} />
+          <div className="flex items-center justify-center gap-1 font-bold" style={{ color: 'var(--warn-ink)' }}>
+            <Zap className="w-4 h-4" style={{ fill: 'var(--warn-ink)' }} />
             <span>{donor.stats.streakCount}</span>
           </div>
           <span className="block text-[10px] mt-1 font-mono" style={{ color: 'var(--muted)' }}>
@@ -113,7 +113,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
         </div>
 
         <div>
-          <div className="font-bold flex items-center justify-center gap-1" style={{ color: 'var(--safe)' }}>
+          <div className="font-bold flex items-center justify-center gap-1" style={{ color: 'var(--safe-ink)' }}>
             <Shield className="w-4 h-4" />
             <span>{donor.stats.livesSaved}</span>
           </div>
@@ -130,7 +130,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
         <div className="flex flex-wrap gap-1.5">
           {donor.badges.map((badge, idx) => (
             <span key={idx} className="px-2.5 py-1 rounded text-[9px] font-sans tracking-wide flex items-center gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--ink)' }}>
-              <Award className="w-3 h-3" style={{ color: 'var(--warn)' }} />
+              <Award className="w-3 h-3" style={{ color: 'var(--warn-ink)' }} />
               {badge}
             </span>
           ))}
@@ -138,7 +138,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
       </div>
 
       {donor.nextEligibleDate && (
-        <div className="mt-3 relative z-10 flex items-center gap-1.5 text-[10px] font-sans px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.2)', color: 'var(--safe)' }}>
+        <div className="mt-3 relative z-10 flex items-center gap-1.5 text-[10px] font-sans px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.2)', color: 'var(--safe-ink)' }}>
           <Shield className="w-3 h-3 shrink-0" />
           <span>
             {lang === 'en' ? `Eligible to donate again from ${donor.nextEligibleDate}` : `اگلا عطیہ ${donor.nextEligibleDate} سے ممکن`}
@@ -161,7 +161,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
         </button>
         {logError && <p className="text-[10px] mt-1.5 text-center font-sans" style={{ color: 'var(--blood)' }}>⚠️ {logError}</p>}
         {logSuccess && (
-          <p className="text-[10px] mt-1.5 text-center font-sans font-semibold" style={{ color: 'var(--safe)' }}>
+          <p className="text-[10px] mt-1.5 text-center font-sans font-semibold" style={{ color: 'var(--safe-ink)' }}>
             {lang === 'en' ? '✅ Recorded — thank you for saving lives.' : '✅ درج ہو گیا — جان بچانے کا شکریہ۔'}
           </p>
         )}
@@ -177,7 +177,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
           disabled={loading}
           className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all duration-300"
           style={donor.isAvailable
-            ? { background: 'rgba(0,196,140,0.08)', border: '1px solid rgba(0,196,140,0.3)', color: 'var(--safe)' }
+            ? { background: 'rgba(0,196,140,0.08)', border: '1px solid rgba(0,196,140,0.3)', color: 'var(--safe-ink)' }
             : { background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.25)', color: 'var(--blood)' }}
         >
           {loading ? (

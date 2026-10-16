@@ -26,6 +26,18 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
   const [speechActive, setSpeechActive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Keyboard a11y: move focus into the chat input when the panel opens and
+  // let Escape close it (WCAG 2.1.2 / 2.4.3).
+  useEffect(() => {
+    if (!isOpen) return;
+    document.getElementById("input-ai-chat-message")?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
+
   // Suggested Quick replies
   const suggestions = lang === 'en' 
     ? [
@@ -136,6 +148,8 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          aria-label={lang === 'en' ? 'Toggle BloodRadar Assistant chat' : 'بلڈ ریڈار اسسٹنٹ چیٹ کھولیں/بند کریں'}
           className="flex items-center gap-2.5 px-4.5 py-3.5 rounded-full bg-[var(--blood)] hover:brightness-110 text-white font-medium shadow-xl shadow-rose-200 border border-rose-400"
         >
           <Sparkles className="w-5 h-5 animate-pulse" />
@@ -149,13 +163,17 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
         </motion.button>
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
+      {/* Entrance-only motion, no exit gating: exit animations stall in
+          throttled/background tabs (paused rAF) and leave the panel stuck
+          open — closing must be instant for reliability. */}
+      {isOpen && (
           <motion.div
             id="ai-chatbot-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === 'en' ? 'BloodRadar Medical Companion chat' : 'بلڈ ریڈار میڈیکل اسسٹنٹ چیٹ'}
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.95 }}
             className="fixed bottom-24 right-6 w-full max-w-sm md:max-w-md h-[550px] rounded-2.5xl bg-[var(--card)]/95 backdrop-blur-xl border border-[var(--border)] shadow-2xl z-50 flex flex-col overflow-hidden text-[var(--ink)]"
           >
             {/* Header */}
@@ -181,17 +199,18 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
                   id="btn-voice-chat-speak"
                   onClick={() => speakText(messages[messages.length - 1].text)}
                   disabled={speechActive}
+                  aria-label={lang === 'en' ? 'Speak last answer' : 'آخری جواب سنائیں'}
                   className={`p-2 rounded-lg text-[var(--muted)] hover:bg-slate-100 hover:text-[var(--blood)] transition ${speechActive ? 'text-rose-550 scale-110' : ''}`}
-                  title="Speak last answer"
                 >
-                  <Volume2 className="w-4 h-4 text-rose-500" />
+                  <Volume2 className="w-4 h-4 text-rose-500" aria-hidden="true" />
                 </button>
                 <button
                   id="btn-close-ai-chat"
                   onClick={() => setIsOpen(false)}
+                  aria-label={lang === 'en' ? 'Close assistant' : 'اسسٹنٹ بند کریں'}
                   className="p-2 rounded-lg text-[var(--muted)] hover:bg-slate-100 hover:text-[var(--ink)] transition"
                 >
-                  <X className="w-4.5 h-4.5" />
+                  <X className="w-4.5 h-4.5" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -261,6 +280,7 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
               <input
                 id="input-ai-chat-message"
                 type="text"
+                aria-label={lang === 'en' ? 'Ask the blood assistant' : 'معاون سے سوال پوچھیں'}
                 placeholder={lang === 'en' ? "Query blood groups, PIMS status..." : "خون کی ضرورت کا پیغام لکھیں..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -273,14 +293,14 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
                 id="btn-send-ai-chat-message"
                 onClick={() => handleSend(input)}
                 disabled={loading || !input.trim()}
+                aria-label={lang === 'en' ? 'Send message' : 'پیغام بھیجیں'}
                 className="p-2.5 rounded-xl bg-[var(--blood)] hover:brightness-110 text-white transition disabled:opacity-40 cursor-pointer shrink-0"
               >
-                <Send className="w-4.5 h-4.5" />
+                <Send className="w-4.5 h-4.5" aria-hidden="true" />
               </button>
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
     </>
   );
 }

@@ -120,9 +120,9 @@ export default function DonorInbox({ lang, onChanged }: DonorInboxProps) {
           <Inbox className="w-4 h-4" style={{ color: 'var(--blood)' }} />
         </div>
         <div>
-          <h4 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>
+          <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>
             {lang === 'en' ? 'Contact Requests' : 'رابطے کی درخواستیں'}
-          </h4>
+          </h2>
           <p className="text-[10px] font-mono" style={{ color: 'var(--muted)' }}>
             {lang === 'en' ? `${openItems.length} waiting for your help` : `${openItems.length} آپ کی مدد کے منتظر`}
           </p>
@@ -144,7 +144,7 @@ export default function DonorInbox({ lang, onChanged }: DonorInboxProps) {
           <a
             href={`tel:${acceptedInfo.requesterPhone}`}
             className="px-3 py-2 rounded-lg text-[11px] font-bold text-white flex items-center gap-1.5 shrink-0 transition"
-            style={{ background: 'var(--safe)' }}
+            style={{ background: 'var(--safe-ink)' }}
           >
             <PhoneCall className="w-3.5 h-3.5" />
             {lang === 'en' ? 'Call' : 'کال'}
@@ -176,7 +176,7 @@ export default function DonorInbox({ lang, onChanged }: DonorInboxProps) {
                 onClick={() => handleAccept(item.id)}
                 disabled={busyId === item.id}
                 className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center justify-center gap-1 transition disabled:opacity-50"
-                style={{ background: 'var(--safe)' }}
+                style={{ background: 'var(--safe-ink)' }}
               >
                 {busyId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                 {lang === 'en' ? 'Accept & Share My Number' : 'قبول کریں اور نمبر شیئر کریں'}

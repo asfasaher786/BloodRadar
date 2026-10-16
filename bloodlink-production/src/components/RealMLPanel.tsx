@@ -120,6 +120,7 @@ export default function RealMLPanel({ lang }: RealMLPanelProps) {
         <div className="flex gap-2">
           <input
             type="text"
+            aria-label={lang === 'en' ? 'Emergency message to classify' : 'درجہ بندی کے لیے پیغام'}
             value={testText}
             onChange={(e) => setTestText(e.target.value)}
             placeholder={lang === 'en' ? "e.g. major surgery scheduled tomorrow, needs platelets" : "مثال: کل بڑا آپریشن ہے، پلیٹلیٹس درکار ہیں"}

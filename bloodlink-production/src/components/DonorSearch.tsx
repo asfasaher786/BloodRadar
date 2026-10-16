@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from "react";
+import React, { useState } from "react";
 import { Donor } from "../types";
 import { API_BASE } from "../lib/api";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
@@ -6,6 +6,10 @@ import {
   Search, MapPin, CheckCircle, ShieldAlert, PhoneCall, Award, 
   Calendar, ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus, Lock 
 } from "lucide-react";
+import Input from "./ui/Input";
+import Button from "./ui/Button";
+import Stepper from "./ui/Stepper";
+import Badge from "./ui/Badge";
 
 interface DonorSearchProps {
   donors: Donor[];
@@ -70,6 +74,9 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
   const [otpBusy, setOtpBusy] = useState(false);
   const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
+  // Onboarding stepper: details → eligibility → consent → phone verification.
+  const [step, setStep] = useState(0);
+
   // Donor numbers are privacy-protected now: full numbers are never listed
   // publicly. The only way to reach a donor is through an SOS → contact
   // request → donor accepts flow. This button shows the masked number and
@@ -115,35 +122,44 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
     }
   };
 
-  // Registration is now OTP-first (privacy design): the form collects the
-  // profile, then a verification code is sent to the phone, and verifying it
-  // creates the donor AND logs the browser in via httpOnly cookies. No donor
-  // record exists until the phone is verified.
-  const handleRegisterVolunteer = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!regName.trim() || !regPhone.trim() || !regLocation.trim()) {
-      setRegisterError(lang === 'en' ? "Please complete all fields." : "براہ کرم تمام لازمی خانے پُر کریں۔");
-      return;
+  // Registration is a 4-step onboarding: details → eligibility → consent →
+  // phone verification. Verification is required, not optional: the phone is
+  // the proof of ownership that keeps the registry free of fake listings.
+  // No donor record exists until the phone is verified.
+  const handleStepNext = () => {
+    setRegisterError("");
+    if (step === 0) {
+      if (!regName.trim() || !regPhone.trim() || !regLocation.trim()) {
+        setRegisterError(lang === 'en' ? "Please complete all fields." : "براہ کرم تمام لازمی خانے پُر کریں۔");
+        return;
+      }
+      setStep(1);
+    } else if (step === 1) {
+      if (!ageConfirmed || !healthConfirmed) {
+        setRegisterError(lang === 'en'
+          ? "Please confirm the eligibility questions — they exist to keep both you and patients safe."
+          : "براہ کرم اہلیت کے سوالات کی تصدیق کریں۔");
+        return;
+      }
+      setStep(2);
+    } else if (step === 2) {
+      if (!consentGiven) {
+        setRegisterError(lang === 'en'
+          ? "Please confirm you consent to your contact details being shared with patients in emergencies."
+          : "براہ کرم اپنی رضامندی کی تصدیق کریں۔");
+        return;
+      }
+      setStep(3);
     }
-    if (!ageConfirmed || !healthConfirmed) {
-      setRegisterError(lang === 'en'
-        ? "Please confirm the eligibility questions below — they exist to keep both you and patients safe."
-        : "براہ کرم اہلیت کے سوالات کی تصدیق کریں — یہ آپ اور مریضوں دونوں کی حفاظت کے لیے ضروری ہیں۔");
-      return;
-    }
-    if (!consentGiven) {
-      setRegisterError(lang === 'en'
-        ? "Please confirm you consent to your contact details being shared with patients in emergencies."
-        : "براہ کرم اپنی رضامندی کی تصدیق کریں۔");
-      return;
-    }
+  };
 
+  const handleSendOtp = async () => {
     setIsRegistering(true);
     setRegisterError("");
     setRegisterSuccess(null);
 
     try {
-      // Step 1: request the verification code for this phone.
+      // Request the verification code for this phone.
       const response = await fetch(`${API_BASE}/api/auth/otp/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,7 +174,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
       } else {
         setRegisterError(data.error || (lang === 'en' ? "Couldn't send the verification code. Try again." : "کوڈ نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔"));
       }
-    } catch (err) {
+    } catch {
       setRegisterError(lang === 'en' ? "Network/Server error. Please try again." : "سرور میں خرابی۔ دوبارہ کوشش کریں۔");
     } finally {
       setIsRegistering(false);
@@ -189,7 +205,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
       const data = await response.json();
       if (response.ok) {
         setOtpStage('verified');
-        setRegisterSuccess(lang === 'en' ? "Successfully registered as a verified savior volunteer! Your live card is now added to the registry." : "بطور تصدیق شدہ رضاکار خون عطیہ دہندہ کامیابی سے اندراج ہو چکا ہے!");
+        setRegisterSuccess(lang === 'en' ? "You're in the registry! Your phone is verified and your live card is now listed." : "بطور تصدیق شدہ رضاکار خون عطیہ دہندہ کامیابی سے اندراج ہو چکا ہے!");
         if (data.user?.phone) localStorage.setItem("bloodradar_my_donor_phone", data.user.phone);
         setRegName("");
         setRegPhone("");
@@ -198,6 +214,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
         setAgeConfirmed(false);
         setHealthConfirmed(false);
         setConsentGiven(false);
+        setStep(0);
         onReviewSubmitted();
       } else {
         setOtpError(data.error || (lang === 'en' ? "Incorrect code. Try again." : "غلط کوڈ۔ دوبارہ کوشش کریں۔"));
@@ -220,10 +237,10 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
     <div id="donor-search-module-card" className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-5 md:p-6 shadow-sm">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h3 className="text-base md:text-lg font-sans font-bold text-[var(--ink)] flex items-center gap-2">
+          <h2 className="text-base md:text-lg font-sans font-bold text-[var(--ink)] flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-[var(--blood)] animate-pulse" />
             {lang === 'en' ? 'Savior Network & Registry' : 'لائیو عطیہ دہندگان کی رجسٹری'}
-          </h3>
+          </h2>
           <p className="text-xs text-[var(--muted)] mt-0.5 font-sans">
             {lang === 'en' ? 'Verified volunteers in Rawalpindi & Islamabad serving real-time medical needs' : 'راولپنڈی اور اسلام آباد کے تصدیق شدہ رضاکار برائے فوری رابطہ'}
           </p>
@@ -370,23 +387,19 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                             </div>
 
                             {donor.isVerified ? (
-                              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium bg-[var(--safe)]/8 border border-[var(--safe)]/30 text-[var(--safe)]" title={lang === 'en' ? "Phone number verified" : "فون نمبر تصدیق شدہ"}>
+                              <Badge tone="safe" mono title={lang === 'en' ? "Phone number verified" : "فون نمبر تصدیق شدہ"}>
                                 <CheckCircle className="w-2.5 h-2.5" /> {lang === 'en' ? 'Verified' : 'تصدیق شدہ'}
-                              </span>
+                              </Badge>
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium bg-[var(--warn)]/10 border border-[var(--warn)]/30 text-[var(--warn)]" title={lang === 'en' ? "Phone not yet verified — worth a quick call to confirm" : "فون نمبر ابھی تصدیق شدہ نہیں — رابطہ کر کے تصدیق کر لیں"}>
+                              <Badge tone="warn" mono title={lang === 'en' ? "Phone not yet verified — worth a quick call to confirm" : "فون نمبر ابھی تصدیق شدہ نہیں — رابطہ کر کے تصدیق کر لیں"}>
                                 {lang === 'en' ? 'Unverified' : 'غیر تصدیق شدہ'}
-                              </span>
+                              </Badge>
                             )}
 
                             {donor.isAvailable ? (
-                              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium bg-green-50 border border-green-200 text-green-700">
-                                Available
-                              </span>
+                              <Badge tone="safe" mono>Available</Badge>
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-medium bg-slate-100 border border-[var(--border)] text-[var(--muted)]">
-                                Busy
-                              </span>
+                              <Badge tone="neutral" mono>Busy</Badge>
                             )}
                           </div>
                           
@@ -546,10 +559,11 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                               >
                                 <div className="grid grid-cols-2 gap-2">
                                   <div>
-                                    <label className="block text-[8px] uppercase tracking-wide text-[var(--muted)] font-bold mb-0.5">
+                                    <label htmlFor="review-patient-name" className="block text-[8px] uppercase tracking-wide text-[var(--muted)] font-bold mb-0.5">
                                       {lang === 'en' ? 'Patient / Attendant' : 'مریض یا نگران'}
                                     </label>
                                     <input
+                                      id="review-patient-name"
                                       type="text"
                                       required
                                       value={patientName}
@@ -559,35 +573,41 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-[8px] uppercase tracking-wide text-[var(--muted)] font-bold mb-0.5">
-                                      {lang === 'en' ? 'Rating' : 'سٹارز ریٹنگ'}
-                                    </label>
-                                    <div className="flex gap-0.5 items-center mt-0.5">
-                                      {[1, 2, 3, 4, 5].map((num) => (
-                                        <button
-                                          type="button"
-                                          key={num}
-                                          onClick={() => setRating(num)}
-                                          className="transition hover:scale-110 cursor-pointer"
-                                        >
-                                          <Star 
-                                            className={`w-3.5 h-3.5 ${
-                                              num <= rating 
-                                                ? 'text-amber-500 fill-amber-500' 
-                                                : 'text-slate-300'
-                                            }`}
-                                          />
-                                        </button>
-                                      ))}
-                                    </div>
+                                    <fieldset className="m-0 p-0 border-0">
+                                      <legend className="block text-[8px] uppercase tracking-wide text-[var(--muted)] font-bold mb-0.5">
+                                        {lang === 'en' ? 'Rating' : 'سٹارز ریٹنگ'}
+                                      </legend>
+                                      <div className="flex gap-0.5 items-center mt-0.5">
+                                        {[1, 2, 3, 4, 5].map((num) => (
+                                          <button
+                                            type="button"
+                                            key={num}
+                                            onClick={() => setRating(num)}
+                                            aria-label={lang === 'en' ? `Rate ${num} star${num > 1 ? 's' : ''}` : `${num} ستارے دیں`}
+                                            aria-pressed={num <= rating}
+                                            className="transition hover:scale-110 cursor-pointer"
+                                          >
+                                            <Star 
+                                              aria-hidden="true"
+                                              className={`w-3.5 h-3.5 ${
+                                                num <= rating 
+                                                  ? 'text-amber-600 fill-amber-600' 
+                                                  : 'text-slate-500'
+                                              }`}
+                                            />
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </fieldset>
                                   </div>
                                 </div>
 
                                 <div>
-                                  <label className="block text-[8px] uppercase tracking-wide text-slate-505 font-bold mb-0.5">
+                                  <label htmlFor="review-comment" className="block text-[8px] uppercase tracking-wide text-slate-505 font-bold mb-0.5">
                                     {lang === 'en' ? 'Testimonial / Comment' : 'مختصر تجربہ'}
                                   </label>
                                   <textarea
+                                    id="review-comment"
                                     required
                                     rows={2}
                                     maxLength={160}
@@ -670,201 +690,246 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                 </button>
               </div>
             </div>
-          ) : (
-            <form onSubmit={handleRegisterVolunteer} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                
-                {/* Full Name */}
-                <div>
-                  <label className="block text-[var(--muted)] font-bold tracking-wide text-[10px] uppercase mb-1.5">
-                    {lang === 'en' ? 'Full Name' : 'عطیہ دہندہ کا نام'} <span className="text-red-505">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={regName}
-                    onChange={(e) => setRegName(e.target.value)}
-                    placeholder={lang === 'en' ? "e.g., Haris Mahmood" : "مثال: حارث محمود"}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--blood)] font-sans"
-                  />
-                </div>
-
-                {/* Blood Group Selector */}
-                <div>
-                  <label className="block text-[var(--muted)] font-bold tracking-wide text-[10px] uppercase mb-1.5">
-                    {lang === 'en' ? 'Your Blood Group' : 'آپ کا بلڈ گروپ'} <span className="text-red-505">*</span>
-                  </label>
-                  <select
-                    value={regBlood}
-                    onChange={(e) => setRegBlood(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--blood)] font-sans font-semibold text-xs"
-                  >
-                    {["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"].map(gp => (
-                      <option key={gp} value={gp}>{gp}</option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-[var(--muted)] mt-1.5 font-sans">
-                    {lang === 'en' ? 'Your blood can help patients with: ' : 'آپ کا خون ان مریضوں کی مدد کر سکتا ہے: '}
-                    <span className="font-semibold text-[var(--ink)]">
-                      {(DONOR_COMPATIBILITY[regBlood] || []).join(", ")}
-                    </span>
-                  </p>
-                </div>
-
-                {/* Contact phone */}
-                <div>
-                  <label className="block text-[var(--muted)] font-bold tracking-wide text-[10px] uppercase mb-1.5">
-                    {lang === 'en' ? 'Contact Phone (For Patients)' : 'رابطہ نمبر (مریضوں کے لیے)'} <span className="text-red-505">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={regPhone}
-                    onChange={(e) => setRegPhone(e.target.value)}
-                    placeholder="+92 333 XXXXXXX"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--blood)] font-mono"
-                  />
-                </div>
-
-                {/* Twin Cities Switch */}
-                <div>
-                  <label className="block text-[var(--muted)] font-bold tracking-wide text-[10px] uppercase mb-1.5">
-                    {lang === 'en' ? 'Twin Cities Region' : 'علاقہ / شہر'} <span className="text-red-505">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {SUPPORTED_CITIES.map(city => (
-                      <button
-                        type="button"
-                        key={city}
-                        onClick={() => setRegCity(city)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-semibold font-sans transition-all duration-200 cursor-pointer ${
-                          regCity === city 
-                            ? 'bg-[var(--blood)] text-white shadow shadow-rose-650/30 font-bold' 
-                            : 'bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)] hover:border-slate-300 hover:text-[var(--ink)]'
-                        }`}
-                      >
-                        {city}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
+          ) : registerSuccess && otpStage === 'verified' ? (
+            <div className="text-center py-8" role="status">
+              <div className="w-14 h-14 rounded-2xl bg-safe-soft border border-safe/40 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle className="w-7 h-7 text-safe-ink" />
               </div>
-
-              {/* Specific Hospital nearby / Area address */}
-              <div>
-                <label className="block text-[var(--muted)] font-bold tracking-wide text-[10px] uppercase mb-1.5">
-                  {lang === 'en' ? 'Specific Sector / Area Location' : 'مخصوص سیکٹر یا علاقہ کی لوکیشن'} <span className="text-red-505">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={regLocation}
-                  onChange={(e) => setRegLocation(e.target.value)}
-                  placeholder={lang === 'en' ? "e.g., G-10/4, near PIMS Hospital or Satellite Town" : "مثال: جی 10، نزد پمز ہسپتال یا سیٹلائٹ ٹاؤن"}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--blood)] font-sans"
-                />
-              </div>
-
-              <div className="p-3.5 bg-[var(--surface)] border border-[var(--border)] rounded-xl space-y-2.5">
-                <p className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wide font-sans">
-                  {lang === 'en' ? 'Quick Eligibility Check' : 'اہلیت کی مختصر جانچ'}
-                </p>
-                <label className="flex items-start gap-2 text-[11px] text-[var(--ink)] font-sans cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={ageConfirmed}
-                    onChange={(e) => setAgeConfirmed(e.target.checked)}
-                    className="mt-0.5 accent-rose-600"
-                  />
-                  <span>
-                    {lang === 'en'
-                      ? "I am between 18 and 65 years old."
-                      : "میری عمر 18 سے 65 سال کے درمیان ہے۔"}
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-[11px] text-[var(--ink)] font-sans cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={healthConfirmed}
-                    onChange={(e) => setHealthConfirmed(e.target.checked)}
-                    className="mt-0.5 accent-rose-600"
-                  />
-                  <span>
-                    {lang === 'en'
-                      ? "I am in generally good health, with no current fever, illness, or recent major surgery."
-                      : "میں عمومی طور پر صحت مند ہوں، مجھے بخار، بیماری یا حالیہ بڑا آپریشن نہیں ہوا۔"}
-                  </span>
-                </label>
-              </div>
-
-              <div className="flex items-start gap-2 p-3 bg-red-50/20 border border-red-200/50 rounded-xl">
-                <ShieldAlert className="w-5 h-5 text-[var(--blood)] shrink-0 mt-0.5" />
-                <label className="flex items-start gap-2 text-[10px] text-[var(--muted)] leading-relaxed font-sans cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={consentGiven}
-                    onChange={(e) => setConsentGiven(e.target.checked)}
-                    className="mt-0.5 accent-rose-600 shrink-0"
-                  />
-                  <span>
-                    {lang === 'en' 
-                      ? "I consent to my blood type and contact phone being listed so local twin cities hospitals and patient attendants can reach me during a blood crisis."
-                      : "میں اس بات پر رضامند ہوں کہ میرا بلڈ گروپ اور فون نمبر لائیو ڈیٹا بیس پر ظاہر کیا جائے تاکہ مریض کے لواحقین ہنگامی حالت میں مجھ سے رابطہ کر سکیں۔"}
-                  </span>
-                </label>
-              </div>
-
-              {otpStage === 'sent' && (
-                <div className="p-3.5 bg-[var(--safe)]/8/60 border border-[var(--safe)]/30 rounded-xl space-y-2">
-                  <p className="text-[11px] font-bold text-emerald-800 font-sans">
-                    {lang === 'en' ? `Verification code sent to ${regPhone}. Enter it below to create your verified profile.` : `تصدیقی کوڈ ${regPhone} پر بھیج دیا گیا ہے۔`}
-                  </p>
-                  {devOtpHint && (
-                    <p className="text-[10px] text-[var(--warn)] bg-[var(--warn)]/10 border border-[var(--warn)]/30 rounded-lg px-2 py-1 font-mono">
-                      {lang === 'en' ? 'Test mode — your code:' : 'ٹیسٹ موڈ — آپ کا کوڈ:'} {devOtpHint}
-                    </p>
-                  )}
-                  {otpError && <p className="text-[11px] text-red-600 font-sans">⚠️ {otpError}</p>}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                      placeholder={lang === 'en' ? "6-digit code" : "6 ہندسوں کا کوڈ"}
-                      className="flex-1 px-3 py-2 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--safe)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleVerifyOtp}
-                      disabled={otpBusy || otpCode.length !== 6}
-                      className="px-4 py-2 rounded-lg bg-[var(--safe)] hover:brightness-110 disabled:opacity-50 text-white font-bold text-[11px] transition font-sans"
-                    >
-                      {otpBusy
-                        ? (lang === 'en' ? 'Verifying...' : 'تصدیق ہو رہی ہے...')
-                        : (lang === 'en' ? 'Verify & Create' : 'تصدیق کریں')}
-                    </button>
-                  </div>
-                </div>
-              )}
-
+              <h4 className="font-display font-bold text-sm text-[var(--ink)]">{registerSuccess}</h4>
+              <p className="text-xs text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
+                {lang === 'en'
+                  ? "Toggle your availability and log each donation to keep your status accurate for patients."
+                  : "اپنی دستیابی آن کریں تاکہ مریض آپ سے رابطہ کر سکیں۔"}
+              </p>
               <button
-                type="submit"
-                disabled={isRegistering}
-                className="w-full py-3 rounded-xl bg-[var(--blood)] hover:brightness-110 disabled:opacity-50 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer font-sans shadow-md"
+                onClick={() => changeTab('search')}
+                id="btn-register-see-registry"
+                className="mt-4 px-5 py-2.5 rounded-xl bg-[var(--blood)] text-white font-display font-bold text-xs transition hover:opacity-90 cursor-pointer"
               >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>
-                  {isRegistering 
-                    ? (lang === 'en' ? 'Sending code...' : 'کوڈ بھیجا جا رہا ہے...') 
-                    : otpStage === 'sent'
-                      ? (lang === 'en' ? 'Resend Verification Code' : 'کوڈ دوبارہ بھیجیں')
-                      : (lang === 'en' ? 'Submit & Get Verification Code' : 'فارم جمع کریں اور کوڈ حاصل کریں')}
-                </span>
+                {lang === 'en' ? 'See the registry' : 'رجسٹری دیکھیں'}
               </button>
-            </form>
+            </div>
+          ) : (
+            <div>
+              <Stepper
+                steps={[
+                  { id: 'details', title: lang === 'en' ? 'Your details' : 'آپ کی تفصیلات', caption: lang === 'en' ? 'name, phone, area' : 'نام، نمبر، علاقہ' },
+                  { id: 'eligibility', title: lang === 'en' ? 'Eligibility' : 'اہلیت', caption: lang === 'en' ? 'age & health' : 'عمر اور صحت' },
+                  { id: 'consent', title: lang === 'en' ? 'Consent' : 'رضامندی', caption: lang === 'en' ? 'how your info is used' : 'معلومات کا استعمال' },
+                  { id: 'verify', title: lang === 'en' ? 'Verify phone' : 'فون کی تصدیق', caption: lang === 'en' ? 'required' : 'لازمی' },
+                ]}
+                current={step}
+              >
+                {registerError && (
+                  <div className="mb-4 p-3 rounded-xl flex items-center gap-2 text-xs bg-blood-soft border border-blood/25 text-blood-ink" role="alert">
+                    <ShieldAlert className="w-4 h-4 shrink-0" />
+                    <span>{registerError}</span>
+                  </div>
+                )}
+
+                {/* ── Step 0: details ── */}
+                {step === 0 && (
+                  <div className="space-y-4 fade-in">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="reg-name"
+                        label={lang === 'en' ? 'Full name' : 'عطیہ دہندہ کا نام'}
+                        placeholder={lang === 'en' ? "e.g., Haris Mahmood" : "مثال: حارث محمود"}
+                        value={regName}
+                        onChange={(e) => setRegName(e.target.value)}
+                      />
+                      <Input
+                        id="reg-phone"
+                        label={lang === 'en' ? 'Contact phone' : 'رابطہ نمبر'}
+                        placeholder="+92 333 XXXXXXX"
+                        type="tel"
+                        inputMode="tel"
+                        value={regPhone}
+                        onChange={(e) => setRegPhone(e.target.value)}
+                        hint={lang === 'en' ? "Shown to patients only after you accept their request." : "آپ کا نمبر صرف آپ کی رضامندی کے بعد ظاہر ہوگا۔"}
+                      />
+                    </div>
+
+                    <fieldset>
+                      <legend className="block font-semibold mb-1.5 text-xs text-ink">
+                        {lang === 'en' ? 'Your blood group' : 'آپ کا بلڈ گروپ'}
+                      </legend>
+                      <div className="grid grid-cols-4 gap-2" role="group" aria-label={lang === 'en' ? 'Blood group' : 'بلڈ گروپ'}>
+                        {["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"].map(gp => (
+                          <button
+                            key={gp}
+                            type="button"
+                            id={`chip-reg-blood-${gp}`}
+                            aria-pressed={regBlood === gp}
+                            onClick={() => setRegBlood(gp)}
+                            className={`h-11 rounded-xl border-2 font-display font-extrabold text-sm transition-all duration-150
+                              ${regBlood === gp ? 'bg-blood border-blood text-white' : 'bg-surface border-border text-ink hover:border-blood/50'}`}
+                          >
+                            {gp}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-[var(--muted)] mt-1.5">
+                        {lang === 'en' ? 'Your blood can help patients with: ' : 'آپ کا خون ان مریضوں کی مدد کر سکتا ہے: '}
+                        <span className="font-semibold text-[var(--ink)]">{(DONOR_COMPATIBILITY[regBlood] || []).join(", ")}</span>
+                      </p>
+                    </fieldset>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <fieldset>
+                        <legend className="block font-semibold mb-1.5 text-xs text-ink">{lang === 'en' ? 'City' : 'شہر'}</legend>
+                        <div className="flex gap-2">
+                          {SUPPORTED_CITIES.map(city => (
+                            <button
+                              type="button"
+                              key={city}
+                              id={`chip-reg-city-${city.toLowerCase()}`}
+                              aria-pressed={regCity === city}
+                              onClick={() => setRegCity(city)}
+                              className={`flex-1 h-12 rounded-xl text-xs font-bold transition-all duration-150
+                                ${regCity === city ? 'bg-ink text-white' : 'bg-surface text-muted border border-border hover:border-ink/40'}`}
+                            >
+                              {city}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <Input
+                        id="reg-location"
+                        label={lang === 'en' ? 'Area / sector' : 'مخصوص سیکٹر یا علاقہ'}
+                        placeholder={lang === 'en' ? "e.g., G-10/4, near PIMS" : "مثال: جی 10، نزد پمز ہسپتال"}
+                        value={regLocation}
+                        onChange={(e) => setRegLocation(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 1: eligibility ── */}
+                {step === 1 && (
+                  <div className="p-4 bg-surface border border-border rounded-xl space-y-3 fade-in">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                      {lang === 'en' ? 'Quick eligibility check' : 'اہلیت کی مختصر جانچ'}
+                    </p>
+                    <label className="flex items-start gap-2.5 text-xs text-ink cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="reg-age-confirm"
+                        checked={ageConfirmed}
+                        onChange={(e) => setAgeConfirmed(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-[var(--blood)]"
+                      />
+                      <span>{lang === 'en' ? "I am between 18 and 65 years old." : "میری عمر 18 سے 65 سال کے درمیان ہے۔"}</span>
+                    </label>
+                    <label className="flex items-start gap-2.5 text-xs text-ink cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="reg-health-confirm"
+                        checked={healthConfirmed}
+                        onChange={(e) => setHealthConfirmed(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-[var(--blood)]"
+                      />
+                      <span>{lang === 'en' ? "I am in generally good health, with no current fever, illness, or recent major surgery." : "میں عمومی طور پر صحت مند ہوں۔"}</span>
+                    </label>
+                    <p className="text-[10px] text-muted border-t border-border pt-2.5">
+                      {lang === 'en'
+                        ? "These are self-reported — a real screening happens at the donation centre. After donating, the app enforces a 90-day gap before your next donation."
+                        : "عطیے کے بعد ایپ 90 دن کا وقفہ نافذ کرتی ہے۔"}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Step 2: consent ── */}
+                {step === 2 && (
+                  <div className="p-4 bg-blood-soft border border-blood/25 rounded-xl fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <ShieldAlert className="w-5 h-5 text-blood shrink-0 mt-0.5" />
+                      <label className="flex items-start gap-2.5 text-xs text-ink leading-relaxed cursor-pointer">
+                        <input
+                          type="checkbox"
+                          id="reg-consent"
+                          checked={consentGiven}
+                          onChange={(e) => setConsentGiven(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 accent-[var(--blood)] shrink-0"
+                        />
+                        <span>
+                          {lang === 'en'
+                            ? "I consent to my blood type and contact phone being listed so hospitals and patient attendants in Islamabad & Rawalpindi can reach me during a blood crisis. My full number is only revealed after I accept a request."
+                            : "میں اس بات پر رضامند ہوں کہ میرا بلڈ گروپ اور فون نمبر لائیو ڈیٹا بیس پر ظاہر کیا جائے۔"}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 3: verify phone ── */}
+                {step === 3 && (
+                  <div className="space-y-3 fade-in">
+                    <p className="text-xs text-muted leading-relaxed">
+                      {lang === 'en'
+                        ? "Verification is required — it proves the phone number is yours, which keeps the registry free of fake listings. Verified donors get the Verified badge."
+                        : "تصدیق لازمی ہے — یہ رجسٹری کو جعلی اندراجات سے محفوظ رکھتی ہے۔"}
+                    </p>
+                    {otpStage === 'sent' && (
+                      <div className="p-3.5 bg-safe-soft border border-safe/40 rounded-xl space-y-2" role="status">
+                        <p className="text-[11px] font-bold text-safe-ink">
+                          {lang === 'en' ? `Verification code sent to ${regPhone}.` : `تصدیقی کوڈ ${regPhone} پر بھیج دیا گیا ہے۔`}
+                        </p>
+                        {devOtpHint && (
+                          <p className="text-[10px] text-warn-ink bg-warn-soft border border-warn/40 rounded-lg px-2 py-1 font-mono">
+                            {lang === 'en' ? 'Test mode — your code:' : 'ٹیسٹ موڈ — آپ کا کوڈ:'} {devOtpHint}
+                          </p>
+                        )}
+                        {otpError && <p className="text-[11px] text-blood-ink">⚠️ {otpError}</p>}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                            placeholder={lang === 'en' ? "6-digit code" : "6 ہندسوں کا کوڈ"}
+                            aria-label={lang === 'en' ? "6-digit verification code" : "تصدیقی کوڈ"}
+                            className="flex-1 h-12 px-3 rounded-lg border border-border bg-card text-center tracking-[0.3em] font-mono text-sm focus:border-safe outline-none"
+                          />
+                          <Button
+                            variant="success"
+                            size="md"
+                            onClick={handleVerifyOtp}
+                            disabled={otpBusy || otpCode.length !== 6}
+                            loading={otpBusy}
+                          >
+                            {lang === 'en' ? 'Verify & Create' : 'تصدیق کریں'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Stepper>
+
+              {/* Navigation */}
+              <div className="mt-5 flex items-center justify-between gap-3">
+                {step > 0 ? (
+                  <Button variant="ghost" size="md" onClick={() => { setRegisterError(""); setStep(step - 1); }}>
+                    {lang === 'en' ? 'Back' : 'واپس'}
+                  </Button>
+                ) : <span />}
+                {step < 3 ? (
+                  <Button variant="primary" size="md" onClick={handleStepNext} icon={<UserPlus className="w-4 h-4" />}>
+                    {lang === 'en' ? 'Continue' : 'آگے بڑھیں'}
+                  </Button>
+                ) : otpStage !== 'sent' && otpStage !== 'verified' ? (
+                  <Button variant="primary" size="md" onClick={handleSendOtp} loading={isRegistering} icon={<Send className="w-4 h-4" />}>
+                    {lang === 'en' ? 'Send verification code' : 'کوڈ بھیجیں'}
+                  </Button>
+                ) : otpStage === 'sent' ? (
+                  <Button variant="ghost" size="md" onClick={handleSendOtp} loading={isRegistering}>
+                    {lang === 'en' ? 'Resend code' : 'کوڈ دوبارہ بھیجیں'}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           )}
         </div>
       )}
