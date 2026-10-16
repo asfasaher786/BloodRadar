@@ -23,6 +23,46 @@ self.addEventListener("install", (event) => {
   );
 });
 
+// Web push (Phase 3.5): the server sends { title, body, url }. The payload
+// carries no PII — only the alert text. Clicking focuses the app (or opens
+// the SOS board directly when a url is provided).
+self.addEventListener("push", (event) => {
+  let data = { title: "BloodRadar", body: "" };
+  try {
+    const parsed = event.data ? event.data.json() : null;
+    if (parsed && typeof parsed === "object") {
+      data = {
+        title: parsed.title || "BloodRadar",
+        body: parsed.body || "",
+      };
+    }
+  } catch {
+    /* fall back to default text */
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: "bloodradar-sos",
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => "focus" in c);
+      if (existing) {
+        existing.focus();
+        return;
+      }
+      return self.clients.openWindow("/");
+    })
+  );
+});
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>

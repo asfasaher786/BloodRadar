@@ -20,16 +20,17 @@ import {
 // canonical "+CC..." format). Everything seeded is flagged isSample so the
 // data layer (and future analytics) can tell demo data from real records.
 let memoryUsers = preseededUsers.map(u => ({ ...u, isSample: true }));
-let memoryDonors = preseededDonors.map(d => ({ ...d, phone: normalizePhone(d.phone), isSample: true }));
+let memoryDonors: any[] = preseededDonors.map(d => ({ ...d, phone: normalizePhone(d.phone), isSample: true }));
 let memoryHospitals: any[] = preseededHospitals.map(h => ({ ...h, isSample: true }));
 let memoryCamps = preseededCamps.map(c => ({ ...c, isSample: true }));
 let memoryEmergencies: any[] = preseededEmergencies.map(e => ({ ...e, contactPhone: e.contactPhone ? normalizePhone(e.contactPhone) : e.contactPhone, isSample: true }));
 let memoryHistory = preseededHistory.map(h => ({ ...h, isSample: true }));
-let memoryNotifications = preseededNotifications.map(n => ({ ...n, isSample: true }));
+let memoryNotifications: any[] = preseededNotifications.map(n => ({ ...n, isSample: true }));
 let memoryChats: any[] = [];
 let memoryContactRequests: any[] = [];
 let memoryAuditLog: any[] = [];
 let memoryOrganizations: any[] = [];
+let memoryPushSubscriptions: any[] = [];
 
 const otpStore = new Map();
 export function storeOtp(phone, code, ttlMs = 5 * 60 * 1000) {
@@ -208,6 +209,13 @@ async function seedMongoDbIfEmpty(database: Db) {
       await database.createCollection("organizations");
       console.log("Created organizations collection in MongoDB");
     }
+
+    // Push subscriptions start empty too — a subscription only exists when
+    // a real donor's browser actually subscribed. Never fabricated.
+    if (!names.includes("pushSubscriptions")) {
+      await database.createCollection("pushSubscriptions");
+      console.log("Created pushSubscriptions collection in MongoDB");
+    }
   } catch (error) {
     console.error("Failed to seed MongoDB:", error);
   }
@@ -228,6 +236,7 @@ async function ensureIndexes(database: Db) {
     await database.collection("auditlog").createIndex({ timestamp: -1 });
     await database.collection("organizations").createIndex({ contactPhone: 1 }, { unique: true });
     await database.collection("organizations").createIndex({ status: 1 });
+    await database.collection("pushSubscriptions").createIndex({ phone: 1 }, { unique: true });
   } catch (error) {
     // Index creation failing must not kill the fallback path — log and move on.
     console.error("Failed to create MongoDB indexes:", error);
@@ -592,9 +601,11 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
 export async function getNotifications(): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
-    return await db.collection("notifications").find({}).sort({ timestamp: -1 }).toArray();
+    // The public feed excludes donor-targeted alerts — those carry a
+    // targetPhone and belong only to that donor's private /mine feed.
+    return await db.collection("notifications").find({ targetPhone: { $exists: false } }).sort({ timestamp: -1 }).toArray();
   }
-  return memoryNotifications;
+  return memoryNotifications.filter(n => !n.targetPhone);
 }
 
 export async function addNotification(notification: any): Promise<void> {
@@ -606,6 +617,30 @@ export async function addNotification(notification: any): Promise<void> {
   memoryNotifications.unshift(notification);
 }
 
+// Targeted alert for a single donor (matched-SOS notification). Stored in
+// the same collection with a targetPhone so the public feed can filter it
+// out; the donor's own /mine feed returns only rows with their phone.
+export async function addTargetedNotification(notification: any): Promise<void> {
+  await addNotification(notification);
+}
+
+export async function getNotificationsForPhone(phone: string): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("notifications").find({ targetPhone: phone }).sort({ timestamp: -1 }).toArray();
+  }
+  return memoryNotifications.filter(n => n.targetPhone === phone);
+}
+
+export async function markNotificationsReadForPhone(phone: string): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("notifications").updateMany({ targetPhone: phone }, { $set: { read: true } });
+    return;
+  }
+  memoryNotifications = memoryNotifications.map(n => (n.targetPhone === phone ? { ...n, read: true } : n));
+}
+
 export async function markAllNotificationsRead(): Promise<void> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
@@ -613,6 +648,66 @@ export async function markAllNotificationsRead(): Promise<void> {
     return;
   }
   memoryNotifications = memoryNotifications.map(n => ({ ...n, read: true }));
+}
+
+// ---------------------------------------------------------------
+// Donor notification preferences (quiet hours, channel opt-ins).
+// Stored on the donor record; absent means the safe defaults.
+// ---------------------------------------------------------------
+
+export async function updateDonorNotifyPrefs(phone: string, notifyPrefs: any): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const result = await db.collection("donors").findOneAndUpdate(
+      { phone },
+      { $set: { notifyPrefs } },
+      { returnDocument: "after" }
+    );
+    return result && (result as any).value ? (result as any).value : result;
+  }
+  const idx = memoryDonors.findIndex(d => d.phone === phone);
+  if (idx !== -1) {
+    memoryDonors[idx].notifyPrefs = notifyPrefs;
+    return memoryDonors[idx];
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------
+// Web push subscriptions (one per donor phone; last subscribe wins).
+// ---------------------------------------------------------------
+
+export async function savePushSubscription(phone: string, subscription: any): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("pushSubscriptions").updateOne(
+      { phone },
+      { $set: { phone, endpoint: subscription.endpoint, keys: subscription.keys, updatedAt: new Date().toISOString() } },
+      { upsert: true }
+    );
+    return;
+  }
+  const idx = memoryPushSubscriptions.findIndex(s => s.phone === phone);
+  const record = { phone, endpoint: subscription.endpoint, keys: subscription.keys, updatedAt: new Date().toISOString() };
+  if (idx !== -1) memoryPushSubscriptions[idx] = record;
+  else memoryPushSubscriptions.push(record);
+}
+
+export async function getPushSubscriptionForPhone(phone: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("pushSubscriptions").findOne({ phone });
+  }
+  return memoryPushSubscriptions.find(s => s.phone === phone) || null;
+}
+
+export async function removePushSubscription(phone: string): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("pushSubscriptions").deleteOne({ phone });
+    return;
+  }
+  memoryPushSubscriptions = memoryPushSubscriptions.filter(s => s.phone !== phone);
 }
 
 // ---------------------------------------------------------------

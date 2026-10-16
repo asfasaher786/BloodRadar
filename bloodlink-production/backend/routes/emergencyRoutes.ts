@@ -21,6 +21,7 @@ import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
 import { authMiddleware, optionalAuthMiddleware, roleMiddleware } from "../middleware/auth";
 import { broadcastEvent } from "../services/events";
+import { notifyMatchingDonors } from "../lib/notifyService";
 
 const router = Router();
 
@@ -120,6 +121,12 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
     }
     const sosPublic = publicSos(result.sos);
     broadcastEvent("emergency-created", sosPublic);
+    // Donor alerting (Phase 3.5): fire after the SOS is safely stored so a
+    // notification failure can never block or roll back the request. The
+    // service itself applies eligibility, channel opt-ins and quiet hours.
+    notifyMatchingDonors(result.sos).catch(err => {
+      console.error("[notify] donor alert dispatch failed:", err);
+    });
     res.json({
       success: true,
       request: sosPublic,

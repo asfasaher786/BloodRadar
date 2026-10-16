@@ -80,4 +80,14 @@ export const CONFIG = {
   NGO_PHONES: parsePhoneList(process.env.NGO_PHONES),
   // Reminder job gate: disabled by default in dev/test, enable with env var.
   ENABLE_DONATION_REMINDERS: process.env.ENABLE_DONATION_REMINDERS === "true",
+  // Web push (VAPID). All three keys must be present for push to work;
+  // missing keys degrade honestly (the UI says "not configured", the server
+  // skips push silently) instead of crashing or pretending to deliver.
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "",
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || "",
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || "",
+  PUSH_ENABLED: Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT),
+  // Quiet hours are evaluated in this timezone. Defaults to Pakistan time;
+  // a white-label deployment sets NOTIFICATION_TZ to its own IANA zone.
+  NOTIFICATION_TZ: process.env.NOTIFICATION_TZ || "Asia/Karachi",
 };

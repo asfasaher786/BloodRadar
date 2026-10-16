@@ -14,6 +14,7 @@ import DonorSearch from "./components/DonorSearch";
 import AdminPanel from "./components/AdminPanel";
 import DonorStreakBadge from "./components/DonorStreakBadge";
 import DonorInbox from "./components/DonorInbox";
+import DonorAlerts from "./components/DonorAlerts";
 import OrgPortal from "./components/OrgPortal";
 import Badge from "./components/ui/Badge";
 import PageSkeleton from "./components/PageSkeleton";
@@ -404,6 +405,9 @@ export default function App() {
           )}
           {currentUserDonor && meRole === 'donor' && (
             <DonorInbox lang={lang} onChanged={loadData} />
+          )}
+          {currentUserDonor && (
+            <DonorAlerts onChanged={loadData} />
           )}
         </motion.div>
       </section>
