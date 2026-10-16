@@ -61,4 +61,55 @@ describe("incoming SMS parsing", () => {
       .send({ Body: "O+ ISLAMABAD" });
     expect(noSender.status).toBe(400);
   });
+
+  it("audit-logs unparseable messages instead of inventing a blood group", async () => {
+    const app = createApp();
+    const res = await request(app).post("/api/sms/incoming").send({
+      From: "+92300999888",
+      Body: "please help me urgently",
+    });
+    expect(res.body.reply).toContain("couldn't read your blood group");
+
+    // The admin-facing audit trail records the failure honestly, so the
+    // team can see which real-world messages the parsers can't handle.
+    const { loginAs } = await import("./helpers");
+    const { agent } = await loginAs(app, "+923331234567"); // dev demo admin
+    const audit = await agent.get("/api/admin/audit");
+    const entry = (audit.body as any[]).find((e: any) => e.action === "sms_parse_failed");
+    expect(entry).toBeTruthy();
+    expect(entry.detail).toContain("please help me urgently");
+  });
+
+  it("alerts matching donors when an SOS arrives via SMS", async () => {
+    const app = createApp();
+    const { registerDonor } = await import("./helpers");
+    // AB- Rawalpindi: no seeded donor matches, so this donor is the only
+    // recipient and assertions stay deterministic.
+    const { agent } = await registerDonor(app, { bloodGroup: "AB-", city: "Rawalpindi" });
+    await agent.put("/api/notifications/preferences").send({
+      appAlerts: true,
+      smsAlerts: false,
+      quietHoursEnabled: false,
+      quietStart: "22:00",
+      quietEnd: "08:00",
+      allowImmediateDuringQuiet: true,
+    });
+
+    const res = await request(app).post("/api/sms/incoming").send({
+      From: "+923001112235",
+      Body: "NEED AB- RAWALPINDI NOW",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toContain("Request received");
+
+    // The alert is dispatched without blocking the reply — poll briefly.
+    let mine: any[] = [];
+    for (let i = 0; i < 25 && mine.length === 0; i++) {
+      await new Promise(r => setTimeout(r, 20));
+      const r2 = await agent.get("/api/notifications/mine");
+      mine = r2.body;
+    }
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+    expect(mine[0].title).toContain("AB-");
+  });
 });

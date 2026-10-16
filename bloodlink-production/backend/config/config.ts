@@ -44,6 +44,12 @@ if (isProd) {
 
 failFast(problems);
 
+if (isProd && !process.env.SMS_WEBHOOK_SECRET) {
+  console.warn(
+    "[SMS] WARNING: SMS_WEBHOOK_SECRET is not set — /api/sms/incoming accepts unauthenticated calls. Set it and configure your gateway to send it as the x-webhook-secret header (or Authorization: Bearer)."
+  );
+}
+
 export const CONFIG = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,
   NODE_ENV,
@@ -90,4 +96,9 @@ export const CONFIG = {
   // Quiet hours are evaluated in this timezone. Defaults to Pakistan time;
   // a white-label deployment sets NOTIFICATION_TZ to its own IANA zone.
   NOTIFICATION_TZ: process.env.NOTIFICATION_TZ || "Asia/Karachi",
+  // Shared secret the SMS gateway must send on the incoming webhook
+  // (x-webhook-secret header or Authorization: Bearer). When set, calls
+  // without it are rejected; when unset, the webhook is open (dev default)
+  // and production logs a warning at boot.
+  SMS_WEBHOOK_SECRET: process.env.SMS_WEBHOOK_SECRET || "",
 };

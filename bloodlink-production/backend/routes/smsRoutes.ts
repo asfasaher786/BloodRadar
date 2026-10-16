@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
-import { createEmergencyRequest } from "../services/dbService";
+import { timingSafeEqual } from "node:crypto";
+import { createEmergencyRequest, addAuditLog } from "../services/dbService";
 import { normalizePhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
 import { parseEmergencyTextWithAI } from "../services/geminiService";
 import { resolveCity, DEFAULT_CITY } from "../config/regions";
+import { CONFIG } from "../config/config";
+import { notifyMatchingDonors } from "../lib/notifyService";
 
 const router = Router();
 const VALID_GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
@@ -33,8 +36,27 @@ function parseIncomingText(body: string): { bloodGroup?: string; city?: string }
   return { bloodGroup, city };
 }
 
+// Gateway authentication: when SMS_WEBHOOK_SECRET is configured, every
+// webhook call must prove it knows the shared secret. Without it, anyone
+// could raise SOS on behalf of arbitrary phone numbers.
+function webhookAuthorized(req: any): boolean {
+  const secret = CONFIG.SMS_WEBHOOK_SECRET;
+  if (!secret) return true; // open webhook — dev default, prod warns at boot
+  const header = String(req.headers["x-webhook-secret"] || "");
+  if (header && header.length === secret.length && timingSafeEqual(Buffer.from(header), Buffer.from(secret))) return true;
+  const auth = String(req.headers["authorization"] || "");
+  if (auth.startsWith("Bearer ")) {
+    const token = auth.slice(7);
+    if (token.length === secret.length && timingSafeEqual(Buffer.from(token), Buffer.from(secret))) return true;
+  }
+  return false;
+}
+
 router.post("/incoming", async (req, res, next) => {
   try {
+    if (!webhookAuthorized(req)) {
+      return res.status(401).json({ error: "Invalid webhook credentials" });
+    }
     const parsed = smsIncomingSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: "Malformed SMS gateway payload" });
@@ -60,6 +82,14 @@ router.post("/incoming", async (req, res, next) => {
     }
 
     if (!bloodGroup) {
+      // Parse failures are logged (audit + server log) so the team can see
+      // what real-world messages the parsers can't handle and improve them.
+      console.warn(`[SMS:incoming] unparseable message from ${normalizedSenderPhone}: "${messageBody}"`);
+      await addAuditLog({
+        action: "sms_parse_failed",
+        actor: normalizedSenderPhone,
+        detail: `Unparseable SMS: "${messageBody.slice(0, 200)}"`,
+      });
       return res.json({ reply: "Sorry, we couldn't read your blood group. Please text your blood group and city, e.g. 'O+ ISLAMABAD'. We're here to help." });
     }
 
@@ -74,6 +104,12 @@ router.post("/incoming", async (req, res, next) => {
     if (result.error || !result.sos) {
       return res.json({ reply: result.error || "Sorry, we couldn't process your request right now. Please call the nearest hospital directly if this is urgent." });
     }
+
+    // Same donor alerting as the web flow: matching donors get in-app/SMS/
+    // push alerts per their own preferences. Never blocks the reply.
+    notifyMatchingDonors(result.sos).catch(err => {
+      console.error("[notify] donor alert dispatch failed (SMS path):", err);
+    });
 
     const count = result.sos.matchingDonorsCount;
     const reply = count > 0
