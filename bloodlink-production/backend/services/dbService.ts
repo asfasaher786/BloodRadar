@@ -4,6 +4,7 @@ import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "../lib/bloodCompatibility";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { resolveCity } from "../config/regions";
+import type { DonorResponseStats } from "./donorRanking";
 import {
   preseededUsers,
   preseededDonors,
@@ -564,6 +565,27 @@ export async function getContactRequestById(id: string): Promise<any> {
     return await db.collection("contactrequests").findOne({ id });
   }
   return memoryContactRequests.find(c => c.id === id) || null;
+}
+
+// Per-donor response stats for transparent ranking: accepted / decided
+// (declined + expired). Superseded requests are NOT the donor's fault —
+// someone else accepted first — so they never count against a donor.
+export async function getContactRequestStats(): Promise<Record<string, DonorResponseStats>> {
+  const { mode, db } = await getDb();
+  const all = mode === "mongodb" && db
+    ? await db.collection("contactrequests").find({}).toArray()
+    : memoryContactRequests;
+  const out: Record<string, DonorResponseStats> = {};
+  for (const c of all as any[]) {
+    const key = c.donorPhone;
+    if (!out[key]) out[key] = { accepted: 0, declined: 0, expired: 0, superseded: 0 };
+    const status = c.status || "open";
+    if (status === "accepted") out[key].accepted += 1;
+    else if (status === "declined") out[key].declined += 1;
+    else if (status === "expired") out[key].expired += 1;
+    else if (status === "superseded") out[key].superseded += 1;
+  }
+  return out;
 }
 
 export async function getInboxForDonor(phone: string): Promise<any[]> {

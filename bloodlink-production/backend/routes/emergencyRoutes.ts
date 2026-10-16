@@ -4,6 +4,9 @@ import {
   getEmergencies,
   getEmergencyById,
   getDonorByPhone,
+  getDonors,
+  getHospitals,
+  getContactRequestStats,
   updateEmergencyStatus,
   createEmergencyRequest,
   createContactRequestsForSos,
@@ -12,6 +15,7 @@ import {
   addAuditLog,
   addEmergencyReport,
 } from "../services/dbService";
+import { rankDonorsForSos } from "../services/donorRanking";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
 import { authMiddleware, optionalAuthMiddleware, roleMiddleware } from "../middleware/auth";
@@ -132,6 +136,41 @@ router.post("/:id/report", async (req, res, next) => {
     await addAuditLog({ action: "sos_reported", actor: "anonymous", sosId: id, detail: reason });
     broadcastEvent("sos-reported", { id });
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Transparent donor ranking (Phase 3): rule-based, explainable, no ML.
+// Returns the top compatible donors sorted by score, each with the plain
+// reasons behind its points. Phones stay masked — same privacy contract
+// as the public donor list.
+router.get("/:id/matches", async (req, res, next) => {
+  try {
+    const id = sanitizeText(req.params.id, 80);
+    const sos = await getEmergencyById(id);
+    if (!sos) return res.status(404).json({ error: "Emergency request not found" });
+
+    const [donors, hospitals, statsByPhone] = await Promise.all([
+      getDonors(),
+      getHospitals(),
+      getContactRequestStats(),
+    ]);
+    const hospital = hospitals.find(h => h.id === sos.hospitalId) || null;
+    const ranked = rankDonorsForSos(donors, sos, hospital, statsByPhone);
+
+    res.json({
+      matches: ranked.slice(0, 20).map(r => ({
+        id: r.donor.id,
+        name: r.donor.name,
+        bloodGroup: r.donor.bloodGroup,
+        city: r.donor.city,
+        phone: maskPhone(r.donor.phone),
+        phoneMasked: true,
+        score: r.score,
+        reasons: r.reasons,
+      })),
+    });
   } catch (err) {
     next(err);
   }

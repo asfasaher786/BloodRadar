@@ -240,3 +240,34 @@ describe("Abuse controls (Phase 3)", () => {
     expect(audit.body.some((entry: any) => entry.action === "sos_reported" && entry.sosId === sos.id)).toBe(true);
   });
 });
+
+describe("Transparent donor ranking (Phase 3)", () => {
+  it("returns ranked matches with reasons and masked phones", async () => {
+    const app = createApp();
+    const { request: sos } = await createSos(app, { bloodGroup: "O+" });
+
+    const res = await request(app).get(`/api/emergencies/${sos.id}/matches`);
+    expect(res.status).toBe(200);
+    const { matches } = res.body;
+    expect(matches.length).toBeGreaterThan(0);
+
+    // Sorted by score, descending.
+    for (let i = 1; i < matches.length; i++) {
+      expect(matches[i - 1].score).toBeGreaterThanOrEqual(matches[i].score);
+    }
+    for (const m of matches) {
+      expect(m.score).toBeGreaterThan(0);
+      expect(m.score).toBeLessThanOrEqual(100);
+      expect(Array.isArray(m.reasons)).toBe(true);
+      expect(m.reasons.length).toBeGreaterThan(0);
+      expect(m.phone).toContain("••••");
+      expect(m.phoneMasked).toBe(true);
+    }
+  });
+
+  it("404s on matches for an unknown SOS", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/emergencies/nope/matches");
+    expect(res.status).toBe(404);
+  });
+});

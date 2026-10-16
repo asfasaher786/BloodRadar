@@ -11,6 +11,7 @@ import Input from "./ui/Input";
 import Select from "./ui/Select";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
+import TopMatches from "./TopMatches";
 
 interface SOSRequestFormProps {
   hospitals: Hospital[];
@@ -425,6 +426,8 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
               <p className="text-[10px] text-muted">
                 {en("We check every 15 seconds and show the donor's number here the moment someone accepts.", "ہم ہر 15 سیکنڈ بعد چیک کرتے ہیں — نمبر قبول ہوتے ہی یہاں دکھائی دے گا۔")}
               </p>
+              {/* Transparent ranking: who's nearby, and exactly why. */}
+              <TopMatches sosId={mySos.id} lang={lang} />
               {/* Honest fallback when the registry has nobody compatible. */}
               {noMatches && (
                 <div className="p-3 rounded-lg bg-warn-soft border border-warn/40" role="note">
