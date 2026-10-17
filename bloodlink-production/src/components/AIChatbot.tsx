@@ -196,9 +196,9 @@ export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps
                   <HeartHandshake className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-[var(--ink)] font-sans tracking-wide">
+                  <h3 className="text-sm font-bold text-[var(--ink)] font-sans tracking-wide">
                     BloodRadar Medical Companion
-                  </h4>
+                  </h3>
                   <div className="flex items-center gap-1.5">
                     <div className={`w-1.5 h-1.5 rounded-full ${aiEnabled === false ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`}></div>
                     <span className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-mono">

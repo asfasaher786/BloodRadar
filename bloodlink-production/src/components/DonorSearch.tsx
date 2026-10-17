@@ -376,9 +376,9 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
 
                         <div>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <h4 className="text-sm font-bold text-[var(--ink)] font-sans tracking-wide">
+                            <h3 className="text-sm font-bold text-[var(--ink)] font-sans tracking-wide">
                               {donor.name}
-                            </h4>
+                            </h3>
                             
                             {/* Average Star Rating Badge */}
                             <div className="flex items-center gap-1 bg-[var(--warn)]/10 border border-[var(--warn)]/30 px-1.5 py-0.5 rounded text-[10px] text-amber-705 font-bold font-sans">
@@ -431,7 +431,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                             {lang === 'en' ? 'Donated count:' : 'عطیات تعداد:'} <span className="text-slate-800 font-semibold">{donor.stats?.donationsCount ?? 1} bags</span>
                           </div>
                           <div className="text-[var(--muted)] font-sans">
-                            {lang === 'en' ? 'Lives Saved:' : 'بچائی گئی جانیں:'} <span className="text-[var(--safe)] font-bold">{donor.stats?.livesSaved ?? 1}</span>
+                            {lang === 'en' ? 'Lives Saved:' : 'بچائی گئی جانیں:'} <span className="text-[var(--safe-ink)] font-bold">{donor.stats?.livesSaved ?? 1}</span>
                           </div>
                         </div>
 
@@ -484,10 +484,10 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                     {expandedDonorReviews === donor.id && (
                       <div className="border-t border-slate-100 pt-3 mt-1 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h5 className="font-semibold text-xs text-[var(--ink)] tracking-wide font-sans flex items-center gap-1.5 uppercase">
+                          <h4 className="font-semibold text-xs text-[var(--ink)] tracking-wide font-sans flex items-center gap-1.5 uppercase">
                             <MessageSquare className="w-3.5 h-3.5 text-[var(--blood)]" />
                             {lang === 'en' ? `Patient testimonials for ${donor.name}` : `مریضوں کی آراء برائے ${donor.name}`}
-                          </h5>
+                          </h4>
                           {avgRating && (
                             <div className="text-[10px] font-bold text-[var(--warn)] bg-[var(--warn)]/10 px-2 py-0.5 rounded border border-[var(--warn)]/30/60 font-mono">
                               ⭐ {avgRating} / 5.0 Rating
@@ -544,7 +544,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
                                 <p className="text-[11px] font-bold text-emerald-800">{reviewSuccess}</p>
                                 <button
                                   onClick={() => setReviewSuccess(null)}
-                                  className="mt-2.5 px-3 py-1 bg-[var(--card)] border border-emerald-250 hover:bg-[var(--safe)]/8 text-[var(--safe)] text-[10px] font-bold rounded-lg transition cursor-pointer"
+                                  className="mt-2.5 px-3 py-1 bg-[var(--card)] border border-emerald-250 hover:bg-[var(--safe)]/8 text-[var(--safe-ink)] text-[10px] font-bold rounded-lg transition cursor-pointer"
                                 >
                                   Okay
                                 </button>
@@ -648,9 +648,9 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
           <div className="flex items-center gap-2 mb-4">
             <UserPlus className="w-5 h-5 text-rose-655" />
             <div>
-              <h4 className="font-bold text-sm text-slate-850 font-sans">
+              <h3 className="font-bold text-sm text-slate-850 font-sans">
                 {lang === 'en' ? 'Save Lives in Rawalpindi & Islamabad' : 'جڑواں شہروں میں انسانیت کی خدمت کریں'}
-              </h4>
+              </h3>
               <p className="text-[11px] text-[var(--muted)] font-sans mt-0.5">
                 {lang === 'en' ? 'Join over 600 verified local blood donors available for emergencies' : 'ہنگامی حالات کے لیے راولپنڈی اور اسلام آباد کے عطیہ دہندگان میں شامل ہوں'}
               </p>
@@ -666,13 +666,13 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
           {registerSuccess ? (
             <div className="p-5 bg-[var(--safe)]/8/70 border border-[var(--safe)]/30 rounded-2xl text-center space-y-3">
               <CheckCircle className="w-10 h-10 text-emerald-605 mx-auto animate-bounce" />
-              <h5 className="font-bold text-emerald-900 text-sm">
+              <h4 className="font-bold text-emerald-900 text-sm">
                 {lang === 'en' ? 'Welcome to Savior Network!' : 'رضاکار نیٹ ورک میں خوش آمدید!'}
-              </h5>
+              </h4>
               <p className="text-xs text-[var(--muted)] leading-relaxed max-w-md mx-auto">
                 {registerSuccess}
               </p>
-              <p className="text-[11px] text-[var(--safe)] font-semibold font-sans">
+              <p className="text-[11px] text-[var(--safe-ink)] font-semibold font-sans">
                 ✅ {lang === 'en' ? "Phone verified — your profile now carries the trusted badge, and you're logged in on this device." : "فون تصدیق شدہ — اب آپ کے پروفائل پر تصدیقی بیج موجود ہے۔"}
               </p>
               <div className="pt-2">
@@ -695,7 +695,7 @@ export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab
               <div className="w-14 h-14 rounded-2xl bg-safe-soft border border-safe/40 flex items-center justify-center mx-auto mb-3">
                 <CheckCircle className="w-7 h-7 text-safe-ink" />
               </div>
-              <h4 className="font-display font-bold text-sm text-[var(--ink)]">{registerSuccess}</h4>
+              <h3 className="font-display font-bold text-sm text-[var(--ink)]">{registerSuccess}</h3>
               <p className="text-xs text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
                 {lang === 'en'
                   ? "Toggle your availability and log each donation to keep your status accurate for patients."

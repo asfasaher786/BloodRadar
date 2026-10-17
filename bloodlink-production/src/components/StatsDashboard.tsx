@@ -115,10 +115,10 @@ export default function StatsDashboard({ lang }: StatsDashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Pie Chart: Donor Blood Distribution */}
         <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-sm">
-          <h4 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
             <TrendingUp className="w-4.5 h-4.5 text-[var(--blood)]" />
             {lang === 'en' ? 'Twin Cities Donor Blood Type Mix' : 'خون کے گروپوں کی شرح تقسیم'}
-          </h4>
+          </h3>
           <div className="h-56 w-full flex items-center justify-center">
             {stats.bloodDistribution.length === 0 ? (
               <p className="text-xs text-[var(--muted)] font-mono">No data initialized</p>
@@ -151,10 +151,10 @@ export default function StatsDashboard({ lang }: StatsDashboardProps) {
 
         {/* Bar Chart: Hospital Stock Levels status */}
         <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-sm">
-          <h4 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
             <Activity className="w-4.5 h-4.5 text-[var(--blood)]" />
             {lang === 'en' ? 'Hospital Blood Banks Stocks Status' : 'راولپنڈی و اسلام آباد ہسپتال بلڈ سٹاک لسٹ'}
-          </h4>
+          </h3>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart

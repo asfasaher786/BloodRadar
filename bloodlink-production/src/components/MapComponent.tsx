@@ -39,6 +39,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
   const [mapLoaded, setMapLoaded] = useState(false);
   const [locateStatus, setLocateStatus] = useState<LocateStatus>('idle');
   const locateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize Map — centers on wherever the real data actually is, not a
   // hardcoded location, so this works for any city/country this platform
@@ -85,16 +86,27 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       mapInstanceRef.current = map;
       setMapLoaded(true);
 
-      // Force layout re-calculate
-      setTimeout(() => {
-        map.invalidateSize();
-      }, 500);
+      // Force layout re-calculate once the map is ready. The callback must
+      // be cancelable: React StrictMode (dev) unmounts right after mount, and
+      // invalidateSize on a removed map crashes Leaflet's _getMapPanePos
+      // (removal deletes the panes but leaves `_loaded` true).
+      map.whenReady(() => {
+        sizeTimerRef.current = setTimeout(() => {
+          if (mapInstanceRef.current === map) {
+            map.invalidateSize();
+          }
+        }, 300);
+      });
 
     } catch (e) {
       console.error("Leaflet initialization failed: ", e);
     }
 
     return () => {
+      if (sizeTimerRef.current) {
+        clearTimeout(sizeTimerRef.current);
+        sizeTimerRef.current = null;
+      }
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -137,9 +149,8 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       const marker = L.marker([h.latitude, h.longitude], {
         icon: createHospitalIcon(isSelected)
       })
-      .bindPopup(`
-        <div style="padding:2px;font-family:var(--font-sans);color:var(--color-ink, #1a1421);">
-          <h4 style="font-weight:700;font-size:14px;color:var(--color-blood, #C41230);margin:0 0 4px;">${h.name}</h4>
+      .bindPopup(`        <div style="padding:2px;font-family:var(--font-sans);color:var(--color-ink, #1a1421);">
+          <h3 style="font-weight:700;font-size:14px;color:var(--color-blood, #C41230);margin:0 0 4px;">${h.name}</h3>
           <p style="font-size:12px;color:var(--color-muted, #6B6578);margin:0 0 4px;">${h.address}</p>
           <p style="font-size:12px;font-weight:600;margin:0;color:var(--color-safe-ink, #007A57);">${h.emergencyHours}</p>
           ${h.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample data — not live inventory</p>' : ''}
@@ -149,6 +160,14 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       marker.on('click', () => {
         onSelectItem(h);
         if (isDesktop) marker.openPopup();
+      });
+
+      // Leaflet marks interactive divIcons as role="button"; give each one
+      // an accessible name (axe rule: aria-command-name). The icon element
+      // only exists once the marker is added to the map, so label it then.
+      marker.on('add', () => {
+        const markerEl = marker.getElement();
+        if (markerEl) markerEl.setAttribute("aria-label", `Hospital marker: ${h.name}`);
       });
 
       cluster.addLayer(marker);
@@ -167,7 +186,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       })
       .bindPopup(`
         <div style="padding:2px;font-family:var(--font-sans);color:var(--color-ink, #1a1421);">
-          <h4 style="font-weight:700;font-size:14px;color:var(--color-warn-ink, #8A5A00);margin:0 0 4px;">${c.title}</h4>
+          <h3 style="font-weight:700;font-size:14px;color:var(--color-warn-ink, #8A5A00);margin:0 0 4px;">${c.title}</h3>
           <p style="font-size:12px;color:var(--color-muted, #6B6578);margin:0 0 4px;">${c.location}</p>
           <p style="font-size:12px;font-weight:600;margin:0;color:var(--color-ink, #1a1421);">${c.date} (${c.time})</p>
           ${c.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample listing — confirm with the organizer</p>' : ''}
@@ -177,6 +196,11 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       marker.on('click', () => {
         onSelectItem(c);
         if (isDesktop) marker.openPopup();
+      });
+
+      marker.on('add', () => {
+        const markerEl = marker.getElement();
+        if (markerEl) markerEl.setAttribute("aria-label", `Donation camp marker: ${c.title}`);
       });
 
       cluster.addLayer(marker);
@@ -323,9 +347,9 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <h4 className="font-display font-bold text-sm leading-tight" style={{ color: 'var(--ink)' }}>
+                <h3 className="font-display font-bold text-sm leading-tight" style={{ color: 'var(--ink)' }}>
                   {'name' in sheetItem ? sheetItem.name : sheetItem.title}
-                </h4>
+                </h3>
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
                   <MapPin className="w-3 h-3 inline mr-1" />
                   {'address' in sheetItem ? sheetItem.address : sheetItem.location}, {sheetItem.city}

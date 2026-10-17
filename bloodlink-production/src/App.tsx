@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { Hospital, BloodCamp, Donor, EmergencyRequest, RealtimeNotification } from "./types";
 import { API_BASE } from "./lib/api";
 import logoImage from "./assets/logo.png";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   Heart, Droplets, Building2, Calendar, MapPin,
   Bell, Users, AlertTriangle, Phone, Sparkles, WifiOff,
@@ -59,6 +59,7 @@ function formatReviewedDate(iso: string): string {
 }
 
 export default function App() {
+  const reduceMotion = useReducedMotion();
   const [lang] = useState<'en'>('en'); // English-only for now — see README
   const [activeTab, setActiveTab] = useState<'hospitals' | 'camps' | 'analytics' | 'ml-playground'>('hospitals');
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -250,8 +251,9 @@ export default function App() {
       {/* EMERGENCY TICKER — entrance-only (exit gating stalls in throttled
           tabs; dismissing must be instant) */}
       {unreadCount > 0 && !dismissedAlert && activeAlert && (
+        <section aria-label={lang === 'en' ? 'Live emergency SOS alert' : 'لائیو ہنگامی ایس او ایس الرٹ'}>
         <motion.div
-          initial={{ height: 0, opacity: 0 }}
+          initial={reduceMotion ? false : { height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           role="alert"
           className="relative overflow-hidden z-50"
@@ -268,16 +270,17 @@ export default function App() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={readAllNotifications} className="text-white/80 hover:text-white text-xs font-semibold underline transition whitespace-nowrap">
+                <button onClick={readAllNotifications} className="text-white hover:text-white/90 text-xs font-semibold underline transition whitespace-nowrap">
                   {lang === 'en' ? 'Dismiss' : 'بند کریں'}
                 </button>
-                <button onClick={() => setDismissedAlert(true)} className="text-white/60 hover:text-white transition">
+                <button onClick={() => setDismissedAlert(true)} aria-label={lang === 'en' ? 'Hide SOS alert' : 'بند کریں'} className="text-white/80 hover:text-white transition">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           </motion.div>
-        )}
+        </section>
+      )}
 
       {/* NAV */}
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
