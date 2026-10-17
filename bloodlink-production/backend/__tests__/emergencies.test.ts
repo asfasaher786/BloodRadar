@@ -43,6 +43,23 @@ describe("SOS creation and masking", () => {
     expect(res.body.error).toBeTruthy();
   });
 
+  it("rejects NoSQL operator payloads with 400 (zod types, never raw filters)", async () => {
+    const app = createApp();
+    // MongoDB query operators smuggled in as values must never reach a
+    // filter: zod requires plain strings here, so both shapes get a 400.
+    const opPhone = await request(app).post("/api/emergencies").send({
+      bloodGroup: "O+",
+      contactPhone: { $ne: null },
+    });
+    expect(opPhone.status).toBe(400);
+
+    const opGroup = await request(app).post("/api/emergencies").send({
+      bloodGroup: { $gt: "" },
+      contactPhone: uniquePhone(),
+    });
+    expect(opGroup.status).toBe(400);
+  });
+
   it("rejects contact-request and reveal with a wrong requester code", async () => {
     const app = createApp();
     const { request: sos } = await createSos(app);
