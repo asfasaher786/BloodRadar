@@ -285,15 +285,10 @@ export default function App() {
       {/* NAV */}
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Logo — crimson brand icon (drop + radar sweep) */}
+          {/* Logo — BloodRadar shield emblem */}
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center relative overflow-hidden shrink-0">
+            <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0">
               <img src={brandIcon} alt="BloodRadar logo" className="w-full h-full object-cover" />
-              {pendingEmergencies.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold font-mono" style={{ background: 'var(--blood-light)' }}>
-                  {pendingEmergencies.length}
-                </span>
-              )}
             </div>
             <div>
               <div className="font-display font-extrabold text-base tracking-tight leading-none" style={{ color: 'var(--ink)' }}>
@@ -308,7 +303,9 @@ export default function App() {
             {unreadCount > 0 && (
               <button onClick={() => alertRef.current?.scrollIntoView({ behavior: 'smooth' })} aria-label={lang === 'en' ? `Notifications — ${unreadCount} unread` : `اطلاعات — ${unreadCount} نئی`} className="relative p-2 rounded-lg transition" style={{ background: 'var(--surface-2)' }}>
                 <Bell className="w-4 h-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ background: 'var(--blood)' }} aria-hidden="true" />
+                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-white text-[9px] font-bold font-mono" style={{ background: 'var(--blood)' }} aria-hidden="true">
+                  {unreadCount}
+                </span>
               </button>
             )}
             {currentUserDonor && (
