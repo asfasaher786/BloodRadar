@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { Hospital, BloodCamp, Donor, EmergencyRequest, RealtimeNotification } from "./types";
 import { API_BASE } from "./lib/api";
-import logoImage from "./assets/logo.png";
+import brandIcon from "./assets/brand-icon.png";
 import { motion, useReducedMotion } from "motion/react";
 import {
   Heart, Droplets, Building2, Calendar, MapPin,
@@ -285,10 +285,10 @@ export default function App() {
       {/* NAV */}
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Logo — original brand emblem (blood drop + heartbeat + gold ring) */}
+          {/* Logo — crimson brand icon (drop + radar sweep) */}
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center relative overflow-hidden bg-ink">
-              <img src={logoImage} alt="BloodRadar logo" className="w-full h-full object-cover" />
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center relative overflow-hidden shrink-0">
+              <img src={brandIcon} alt="BloodRadar logo" className="w-full h-full object-cover" />
               {pendingEmergencies.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold font-mono" style={{ background: 'var(--blood-light)' }}>
                   {pendingEmergencies.length}
