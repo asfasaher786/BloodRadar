@@ -37,6 +37,6 @@ describe("ops endpoints", () => {
     const stranger = await request(app)
       .get("/health")
       .set("Origin", "https://evil.example.com");
-    expect(stranger.status).toBe(500);
+    expect(stranger.status).toBe(403);
   });
 });

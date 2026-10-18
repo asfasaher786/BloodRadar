@@ -53,7 +53,12 @@ export function createApp() {
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      // Disallowed browser origins get a clean 403 (not a 500) and never
+      // reach the routes. No-origin requests (curl, tests, server-to-server)
+      // are allowed above because they can't carry a browser session.
+      const err: any = new Error("Not allowed by CORS");
+      err.status = 403;
+      return callback(err);
     },
     credentials: true,
   }));
