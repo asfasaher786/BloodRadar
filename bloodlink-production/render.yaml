@@ -1,19 +1,80 @@
+# Render Blueprint — BloodRadar production deployment.
+# Single web service: the Node process serves the API and the built
+# frontend (dist/) together. Deploy via Render dashboard → New → Blueprint,
+# or `render.yaml` in a connected Git repo.
+#
+# Every env var below mirrors backend/config/config.ts. Values marked
+# sync:false must be filled in the Render dashboard (Environment tab);
+# generateValue ones are auto-created on first deploy and can be copied
+# out if another system needs them.
+
 services:
   - type: web
     name: bloodradar
     runtime: node
+    plan: starter # $7/mo always-on; change to free only if cold starts are acceptable (NOT recommended for an emergency app)
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
+      # --- Boot (required) -------------------------------------------------
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
-      - key: MONGO_URI
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
+      - key: JWT_SECRET
+        generateValue: true # >=32 chars; server refuses to boot without it
       - key: FRONTEND_URL
-        sync: false
+        sync: false # e.g. https://bloodradar.example.com — strict CORS + cookie security
       - key: BACKEND_URL
+        sync: false # optional; same origin as FRONTEND_URL for this blueprint
+      # --- Database --------------------------------------------------------
+      - key: MONGO_URI
+        sync: false # MongoDB Atlas connection string (see DEPLOYMENT-RUNBOOK.md §Atlas)
+      # --- AI triage -------------------------------------------------------
+      - key: GEMINI_API_KEY
+        sync: false # absent = chatbot degrades to fallback replies (documented)
+      # --- SMS outbound ----------------------------------------------------
+      # twilio: needs the three TWILIO_* vars.
+      # custom-gateway: needs SMS_GATEWAY_URL (+ optional SMS_GATEWAY_API_KEY).
+      # console: dev-only; production logs a loud warning (OTPs never delivered).
+      - key: SMS_PROVIDER
         sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: SMS_GATEWAY_URL
+        sync: false
+      - key: SMS_GATEWAY_API_KEY
+        sync: false
+      # --- SMS inbound webhook ---------------------------------------------
+      - key: SMS_WEBHOOK_SECRET
+        generateValue: true # gateway must send as x-webhook-secret header (or Bearer)
+      # --- Web push (VAPID) ------------------------------------------------
+      # All three must be set for push; absent = UI honestly says "not configured".
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false # mailto: or https URL of the operator
+      # --- Locale & roles --------------------------------------------------
+      - key: COUNTRY_CODE
+        value: "92" # Pakistan; change for other deployments
+      - key: NOTIFICATION_TZ
+        value: Asia/Karachi
+      - key: ADMIN_PHONES
+        sync: false # comma-separated +CC numbers, e.g. +92300XXXXXXX
+      - key: STAFF_PHONES
+        sync: false
+      - key: NGO_PHONES
+        sync: false
+      # --- Background jobs --------------------------------------------------
+      - key: ENABLE_DONATION_REMINDERS
+        value: "false" # set "true" only after SMS delivery is proven working
+      # --- Logging -----------------------------------------------------------
+      - key: LOG_LEVEL
+        value: info
