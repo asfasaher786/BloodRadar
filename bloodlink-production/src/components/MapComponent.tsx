@@ -71,11 +71,11 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
         scrollWheelZoom: true,
       }).setView(defaultCenter, zoom);
 
-      // CARTO basemaps (free for public web apps with attribution) — OSM's
-      // own tile.openstreetmap.org refuses requests from live apps under its
-      // tile usage policy, so we never hit it directly from the browser.
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      // Esri World Street Map (free for public web apps with attribution,
+      // no API key). OSM's own tile server blocks live apps by policy, and
+      // CARTO basemaps now require an API key, so neither works keyless.
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ',
         maxZoom: 19
       }).addTo(map);
 

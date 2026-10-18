@@ -285,9 +285,9 @@ export default function App() {
       {/* NAV */}
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Logo */}
+          {/* Logo — original brand emblem (blood drop + heartbeat + gold ring) */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center relative overflow-hidden bg-ink">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center relative overflow-hidden bg-ink">
               <img src={logoImage} alt="BloodRadar logo" className="w-full h-full object-cover" />
               {pendingEmergencies.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold font-mono" style={{ background: 'var(--blood-light)' }}>
