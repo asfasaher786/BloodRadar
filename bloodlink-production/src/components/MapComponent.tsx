@@ -71,8 +71,12 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
         scrollWheelZoom: true,
       }).setView(defaultCenter, zoom);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      // CARTO basemaps (free for public web apps with attribution) — OSM's
+      // own tile.openstreetmap.org refuses requests from live apps under its
+      // tile usage policy, so we never hit it directly from the browser.
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        maxZoom: 19
       }).addTo(map);
 
       // Marker clustering when the plugin is available; plain layer group
