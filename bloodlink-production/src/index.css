@@ -43,8 +43,8 @@
   /* Neutrals — warm paper */
   --color-ink: #0D0D0D;
   --color-ink-2: #1A1A2E;
-  --color-surface: #F5F0EB;
-  --color-surface-2: #EDE8E3;
+  --color-surface: #F7F2ED;
+  --color-surface-2: #EFE9E3;
   --color-card: #FFFFFF;
   --color-muted: #6B6578;
   --color-border: #E2DDD8;
@@ -100,6 +100,30 @@ body {
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Display type (Syne) reads tighter; body (DM Sans) slightly airier. */
+h1, h2, h3, h4, .font-display { letter-spacing: -0.02em; }
+body { letter-spacing: 0.005em; }
+
+/* ── Brand surfaces ──────────────────────────────────────────────────────── */
+
+/* Hero backdrop: a faint crimson bloom on the warm paper, subtle enough to
+   stay calm while giving the top of the page depth. */
+.hero-glow {
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgb(196 18 48 / 0.08), transparent 60%),
+    radial-gradient(900px 420px at 90% -20%, rgb(201 162 39 / 0.07), transparent 55%);
+}
+
+/* SOS card: gradient crimson border ring — the one surface on the page that
+   is allowed to feel urgent. */
+.sos-card {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--color-card), var(--color-card)) padding-box,
+    linear-gradient(140deg, var(--color-blood), var(--color-blood-ink) 60%, var(--color-blood-hover)) border-box;
+  box-shadow: var(--shadow-3);
 }
 
 /* ── Accessibility baseline ─────────────────────────────────────────────── */
