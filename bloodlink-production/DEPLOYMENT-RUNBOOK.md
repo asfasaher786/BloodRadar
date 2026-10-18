@@ -57,8 +57,8 @@ Required in production (≥32 chars); the server refuses to boot without it. Gen
 
 ## 5. Render deploy (recommended path, ~20 min)
 
-1. Push this repo to a GitHub repository the founder controls (private). *(Current local history: 30 commits ahead of origin — nothing has been pushed yet; ask the user/founder before any push.)*
-2. Render dashboard → **New → Blueprint** → connect the repo. It reads `render.yaml` (already complete: build → start → health check `/health` → full env var set).
+1. Push this repo to a GitHub repository the founder controls. *(Done 2026-10-18: 36 commits on origin/main at github.com/asfasaher786/BloodRadar.)*
+2. Render dashboard → **New → Blueprint** → connect the repo. **Blueprint Path must be `bloodlink-production/render.yaml`** (the repo root is one level above the app; `rootDir: bloodlink-production` in render.yaml makes build/start run inside the app folder). The blueprint is already complete: build → start → health check `/health` → full env var set.
 3. Fill the **Environment** values marked `sync: false`: `FRONTEND_URL` (e.g. `https://<service-name>.onrender.com` or the custom domain), `MONGO_URI`, `GEMINI_API_KEY`, SMS vars, VAPID vars, `ADMIN_PHONES`/`STAFF_PHONES`/`NGO_PHONES` (comma-separated `+92…` numbers).
 4. Deploy → watch the log for `BloodRadar server listening … (production, db=mongodb, sms=twilio)`.
 5. Run the post-deploy smoke checklist (§9).

@@ -13,6 +13,7 @@ services:
     name: bloodradar
     runtime: node
     plan: free # testing phase; upgrade to starter ($7/mo, no cold starts) before public promotion
+    rootDir: bloodlink-production # repo root is one level above the app; build/start run here
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
