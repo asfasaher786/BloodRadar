@@ -355,17 +355,18 @@ export default function App() {
       </header>
 
       {/* HERO */}
-      <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 pb-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-7 space-y-5">
+      <div className="hero-glow border-b border-border/60">
+      <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-12 pb-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-7 space-y-6">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
             <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold px-3 py-1.5 rounded-full border mb-4 bg-blood-soft border-blood/20 text-blood-ink">
               <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-blood" />
               {lang === 'en' ? 'LIVE · Rawalpindi & Islamabad Operations' : 'لائیو · راولپنڈی اور اسلام آباد'}
             </span>
-            <h1 className="font-display font-extrabold text-4xl md:text-5xl lg:text-6xl leading-[1.05] tracking-tight" style={{ color: 'var(--ink)' }}>
+            <h1 className="font-display font-extrabold text-5xl md:text-6xl lg:text-7xl leading-[1.02] tracking-tight" style={{ color: 'var(--ink)' }}>
               {lang === 'en' ? <>Every Second<br /><span style={{ color: 'var(--blood)' }}>Saves a Life.</span></> : <>ہر لمحہ<br /><span style={{ color: 'var(--blood)' }}>زندگی بچاتا ہے۔</span></>}
             </h1>
-            <p className="text-base md:text-lg mt-4 leading-relaxed max-w-xl" style={{ color: 'var(--muted)' }}>
+            <p className="text-base md:text-lg mt-5 leading-relaxed max-w-xl" style={{ color: 'var(--muted)' }}>
               {lang === 'en'
                 ? "Find compatible blood donors faster in Islamabad & Rawalpindi. An early-stage community project: real donors, verified by phone, connected privately to people who need blood right now."
                 : "اسلام آباد اور راولپنڈی میں خون کے عطیہ دہندگان تک تیزی سے رسائی۔ ابتدائی مرحلے کا کمیونٹی منصوبہ۔"}
@@ -379,7 +380,7 @@ export default function App() {
               { icon: Building2, val: hospitals.length, suffix: '', label: lang === 'en' ? 'Hospitals' : 'ہسپتال' },
               { icon: Zap, val: pendingEmergencies.length, suffix: '', label: lang === 'en' ? 'Active SOS' : 'فعال SOS', urgent: pendingEmergencies.length > 0 },
             ].map(({ icon: Icon, val, suffix, label, urgent }) => (
-              <div key={label} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm bg-card ${urgent ? 'border-blood/30' : 'border-border'}`}>
+              <div key={label} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm bg-card/80 backdrop-blur shadow-1 ${urgent ? 'border-blood/30' : 'border-border'}`}>
                 <Icon className={`w-4 h-4 ${urgent ? 'text-blood' : 'text-muted'}`} />
                 <span className={`font-display font-bold ${urgent ? 'text-blood' : 'text-ink'}`}>
                   <AnimatedNumber value={val} suffix={suffix} />
@@ -390,11 +391,11 @@ export default function App() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="flex flex-wrap gap-3 pt-1">
-            <a href="#emergencies-board" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-display font-bold text-sm text-white transition hover:opacity-90" style={{ background: 'var(--blood)' }}>
+            <a href="#emergencies-board" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl font-display font-bold text-sm text-white transition-all duration-150 shadow-2 hover:shadow-3 hover:-translate-y-px" style={{ background: 'var(--blood)' }}>
               <Activity className="w-4 h-4" />
               {lang === 'en' ? 'View Live Emergencies' : 'ہنگامی فیڈ دیکھیں'}
             </a>
-            <a href="#sos-form" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-display font-bold text-sm border transition hover:border-current" style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--ink)' }}>
+            <a href="#sos-form" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl font-display font-bold text-sm border transition-all duration-150 shadow-1 hover:shadow-2 hover:-translate-y-px" style={{ background: 'var(--card)', borderColor: 'var(--border-strong)', color: 'var(--ink)' }}>
               <AlertTriangle className="w-4 h-4" style={{ color: 'var(--blood)' }} />
               {lang === 'en' ? 'Request Blood (SOS)' : 'خون مانگیں (SOS)'}
             </a>
@@ -414,18 +415,95 @@ export default function App() {
           )}
         </motion.div>
       </section>
+      </div>
 
       {/* MAIN CONTENT */}
-      <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pb-24 space-y-8">
 
-        {/* LEFT — Map + Directory */}
-        <div className="lg:col-span-8 space-y-6">
-          <Suspense fallback={<MapCardSkeleton />}>
-            <MapComponent hospitals={hospitals} camps={camps} selectedItem={selectedItem} onSelectItem={(item) => { setSelectedItem(item); }} lang={lang} />
-          </Suspense>
+        {/* ROW 1 — crisis actions first: raise an SOS, watch the live board. */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+          {/* SOS Form */}
+          <div id="sos-form" className={`transition-all duration-200 rounded-3xl lg:col-span-5 ${flashSOS ? 'sos-ring' : ''}`}>
+            <SOSRequestForm hospitals={hospitals} onSuccess={handleSOSSuccess} lang={lang} />
+          </div>
+
+          {/* EMERGENCIES BOARD */}
+          <div id="emergencies-board" className="lg:col-span-7 rounded-3xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
+                <h2 className="font-display font-bold text-base" style={{ color: 'var(--ink)' }}>
+                  {lang === 'en' ? 'Active Emergency SOS' : 'فعال ہنگامی SOS'}
+                </h2>
+              </div>
+              <span className="font-mono text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
+            </div>
+            {/* Screen-reader summary of the board state — announced when the
+                count changes via SSE, without the animated counter noise. */}
+            <p aria-live="polite" className="sr-only">
+              {pendingEmergencies.length === 0
+                ? (lang === 'en' ? 'No active emergencies.' : 'کوئی فعال ہنگامی صورتحال نہیں۔')
+                : (lang === 'en' ? `${pendingEmergencies.length} active emergencies pending.` : `${pendingEmergencies.length} فعال ہنگامی درخواستیں زیر التوا ہیں۔`)}
+            </p>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {emergencies.length === 0 && <p className="text-sm col-span-2 text-center py-8" style={{ color: 'var(--muted)' }}>No active emergencies right now.</p>}
+              {emergencies.map(sos => (
+                <div key={sos.id} className={`p-4 rounded-xl border transition-all ${highlightedSosIds.has(sos.id) ? 'live-highlight' : ''} ${sos.status === 'Fulfilled' ? 'bg-surface border-border opacity-60' : 'bg-blood-soft/50 border-blood/25'}`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <span className={`inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded mb-1.5 ${sos.urgency === 'Immediate (SOS)' ? 'bg-blood text-white' : 'bg-warn-soft text-warn-ink'}`}>
+                        {sos.urgency}
+                      </span>
+                      <div className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>{sos.bloodGroup}</div>
+                  </div>
+                  <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{sos.reason}</p>
+                  <div className="text-[10px] space-y-1 mb-3" style={{ color: 'var(--muted)' }}>
+                    <div>🏥 {sos.hospitalName}</div>
+                    {sos.postedBy === 'organization' && sos.orgName && (
+                      <div>🏛️ Posted by <span className="font-semibold" style={{ color: 'var(--ink)' }}>{sos.orgName}</span> · verified organization</div>
+                    )}
+                    <div>⏰ Required by <span className="font-semibold" style={{ color: 'var(--blood)' }}>{sos.requiredBy}</span></div>
+                    <div>👥 <span className="font-semibold" style={{ color: 'var(--safe-ink)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
+                  </div>
+                  {sos.status === 'Pending' ? (
+                    <div className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs bg-blood-soft border border-blood/15 text-muted">
+                      <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blood)' }} />
+                      <span>
+                        {lang === 'en'
+                          ? `Contact ${sos.contactPhone} — the full number is revealed privately when a donor accepts the request.`
+                          : `رابطہ ${sos.contactPhone} — مکمل نمبر صرف رضاکار کے قبول کرنے پر ظاہر ہوتا ہے۔`}
+                      </span>
+                    </div>
+                  ) : sos.status === 'Cancelled' ? (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
+                      <X className="w-4 h-4" /> {lang === 'en' ? 'Cancelled by requester' : 'درخواست گزار نے منسوخ کر دیا'}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-safe-soft text-safe-ink">
+                      <CheckCircle2 className="w-4 h-4" /> {lang === 'en' ? 'Fulfilled · Lives Saved' : 'مکمل · زندگی بچائی گئی'}
+                    </div>
+                  )}
+                  <SosReportButton sosId={sos.id} lang={lang} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 2 — discovery: map + directory left, donors & orgs right. */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+          {/* LEFT — Map + Directory */}
+          <div className="lg:col-span-8 space-y-6">
+            <Suspense fallback={<MapCardSkeleton />}>
+              <MapComponent hospitals={hospitals} camps={camps} selectedItem={selectedItem} onSelectItem={(item) => { setSelectedItem(item); }} lang={lang} />
+            </Suspense>
 
           {/* Directory Tabs */}
-          <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <div className="rounded-3xl border overflow-hidden" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
             {/* Tab Nav */}
             <div
               role="tablist"
@@ -554,78 +632,10 @@ export default function App() {
             </div>
           </div>
 
-          {/* EMERGENCIES BOARD */}
-          <div id="emergencies-board" className="rounded-2xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
-                <h2 className="font-display font-bold text-base" style={{ color: 'var(--ink)' }}>
-                  {lang === 'en' ? 'Active Emergency SOS' : 'فعال ہنگامی SOS'}
-                </h2>
-              </div>
-              <span className="font-mono text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
-            </div>
-            {/* Screen-reader summary of the board state — announced when the
-                count changes via SSE, without the animated counter noise. */}
-            <p aria-live="polite" className="sr-only">
-              {pendingEmergencies.length === 0
-                ? (lang === 'en' ? 'No active emergencies.' : 'کوئی فعال ہنگامی صورتحال نہیں۔')
-                : (lang === 'en' ? `${pendingEmergencies.length} active emergencies pending.` : `${pendingEmergencies.length} فعال ہنگامی درخواستیں زیر التوا ہیں۔`)}
-            </p>
-            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {emergencies.length === 0 && <p className="text-sm col-span-2 text-center py-8" style={{ color: 'var(--muted)' }}>No active emergencies right now.</p>}
-              {emergencies.map(sos => (
-                <div key={sos.id} className={`p-4 rounded-xl border transition-all ${highlightedSosIds.has(sos.id) ? 'live-highlight' : ''} ${sos.status === 'Fulfilled' ? 'bg-surface border-border opacity-60' : 'bg-blood-soft/50 border-blood/25'}`}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <span className={`inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded mb-1.5 ${sos.urgency === 'Immediate (SOS)' ? 'bg-blood text-white' : 'bg-warn-soft text-warn-ink'}`}>
-                        {sos.urgency}
-                      </span>
-                      <div className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>{sos.bloodGroup}</div>
-                  </div>
-                  <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{sos.reason}</p>
-                  <div className="text-[10px] space-y-1 mb-3" style={{ color: 'var(--muted)' }}>
-                    <div>🏥 {sos.hospitalName}</div>
-                    {sos.postedBy === 'organization' && sos.orgName && (
-                      <div>🏛️ Posted by <span className="font-semibold" style={{ color: 'var(--ink)' }}>{sos.orgName}</span> · verified organization</div>
-                    )}
-                    <div>⏰ Required by <span className="font-semibold" style={{ color: 'var(--blood)' }}>{sos.requiredBy}</span></div>
-                    <div>👥 <span className="font-semibold" style={{ color: 'var(--safe-ink)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
-                  </div>
-                  {sos.status === 'Pending' ? (
-                    <div className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs bg-blood-soft border border-blood/15 text-muted">
-                      <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blood)' }} />
-                      <span>
-                        {lang === 'en'
-                          ? `Contact ${sos.contactPhone} — the full number is revealed privately when a donor accepts the request.`
-                          : `رابطہ ${sos.contactPhone} — مکمل نمبر صرف رضاکار کے قبول کرنے پر ظاہر ہوتا ہے۔`}
-                      </span>
-                    </div>
-                  ) : sos.status === 'Cancelled' ? (
-                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
-                      <X className="w-4 h-4" /> {lang === 'en' ? 'Cancelled by requester' : 'درخواست گزار نے منسوخ کر دیا'}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-safe-soft text-safe-ink">
-                      <CheckCircle2 className="w-4 h-4" /> {lang === 'en' ? 'Fulfilled · Lives Saved' : 'مکمل · زندگی بچائی گئی'}
-                    </div>
-                  )}
-                  <SosReportButton sosId={sos.id} lang={lang} />
-                </div>
-              ))}
-            </div>
           </div>
-        </div>
 
-        {/* RIGHT COLUMN */}
+        {/* RIGHT COLUMN — donors, org portal & hotlines (inside ROW 2 grid). */}
         <div className="lg:col-span-4 space-y-6">
-          {/* SOS Form */}
-          <div id="sos-form" className={`transition-all duration-200 rounded-2xl ${flashSOS ? 'sos-ring' : ''}`}>
-            <SOSRequestForm hospitals={hospitals} onSuccess={handleSOSSuccess} lang={lang} />
-          </div>
-
           {/* Donor Search */}
           <div id="donor-search">
             <DonorSearch donors={donors} lang={lang} onReviewSubmitted={loadData} activeTab={activeDonorTab} setActiveTab={setActiveDonorTab} />
@@ -639,7 +649,7 @@ export default function App() {
           <OrgPortal lang={lang} hospitals={hospitals} onDataChanged={loadData} />
 
           {/* Emergency Hotlines */}
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <div className="rounded-3xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
             <h2 className="font-display font-bold text-sm mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
               <Phone className="w-4 h-4" style={{ color: 'var(--blood)' }} />
               {lang === 'en' ? '24/7 Emergency Hotlines' : 'ہنگامی رابطہ نمبرز'}
@@ -655,6 +665,7 @@ export default function App() {
                 <span className="font-mono text-xs font-bold group-hover:underline" style={{ color: 'var(--blood)' }}>{number}</span>
               </a>
             ))}
+          </div>
           </div>
         </div>
       </main>

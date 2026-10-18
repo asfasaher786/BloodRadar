@@ -290,7 +290,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
   return (
     <Card
       id="sos-request-form-card"
-      className="border-blood/25 shadow-2"
+      className="sos-card"
       icon={
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-blood blood-pulse">
           <Siren className="w-5 h-5 text-white" />
@@ -621,7 +621,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
                 placeholder={en("e.g. Major surgery scheduled tomorrow morning", "مثلاً کل صبح بڑا آپریشن ہے")}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-border text-sm text-ink placeholder:text-muted/70 resize-none transition-colors duration-150 focus:border-blood outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-border-strong text-sm text-ink placeholder:text-muted/70 resize-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood outline-none"
               />
             </div>
           </div>
