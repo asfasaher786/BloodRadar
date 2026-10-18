@@ -12,7 +12,7 @@ services:
   - type: web
     name: bloodradar
     runtime: node
-    plan: starter # $7/mo always-on; change to free only if cold starts are acceptable (NOT recommended for an emergency app)
+    plan: free # testing phase; upgrade to starter ($7/mo, no cold starts) before public promotion
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
