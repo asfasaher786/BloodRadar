@@ -35,10 +35,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
           id={id}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
-          className={`w-full h-12 px-3.5 rounded-xl bg-surface border text-sm text-ink placeholder:text-muted
+          className={`w-full h-12 px-3.5 rounded-xl bg-card border text-sm text-ink placeholder:text-muted
             transition-colors duration-150 outline-none
+            focus:ring-2 focus:ring-blood/15 focus:border-blood
             ${icon ? "pl-10" : ""}
-            ${error ? "border-blood" : "border-border-strong focus:border-blood"} ${className}`}
+            ${error ? "border-blood" : "border-border-strong"} ${className}`}
           {...rest}
         />
       </div>

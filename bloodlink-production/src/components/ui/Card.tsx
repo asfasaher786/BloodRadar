@@ -13,9 +13,9 @@ interface CardProps {
 /** Standard surface card with an optional header row. */
 export default function Card({ title, subtitle, icon, actions, children, className = "", id }: CardProps) {
   return (
-    <section id={id} className={`rounded-2xl border border-border bg-card shadow-1 ${className}`}>
+    <section id={id} className={`rounded-3xl border border-border bg-card shadow-1 ${className}`}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 px-5 pt-5 pb-4 border-b border-border">
+        <header className="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-border">
           <div className="flex items-center gap-2.5 min-w-0">
             {icon && <span className="shrink-0 text-blood" aria-hidden="true">{icon}</span>}
             <div className="min-w-0">
@@ -26,7 +26,7 @@ export default function Card({ title, subtitle, icon, actions, children, classNa
           {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className="p-5">{children}</div>
+      <div className="p-6">{children}</div>
     </section>
   );
 }

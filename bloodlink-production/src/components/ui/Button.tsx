@@ -5,11 +5,12 @@ export type ButtonSize = "sm" | "md" | "lg";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   // One primary action per screen: crimson, bold, calm elsewhere.
-  primary: "bg-blood text-white hover:bg-blood-hover shadow-1",
-  secondary: "bg-card text-ink border border-border hover:border-blood/40 hover:text-blood",
+  // Primary lifts 1px on hover — a tactile cue, not decoration.
+  primary: "bg-blood text-white hover:bg-blood-hover shadow-2 hover:shadow-3 hover:-translate-y-px",
+  secondary: "bg-card text-ink border border-border-strong shadow-1 hover:border-blood/50 hover:text-blood hover:-translate-y-px",
   ghost: "bg-transparent text-muted hover:text-ink hover:bg-surface-2",
-  danger: "bg-blood-ink text-white hover:opacity-90",
-  success: "bg-safe-ink text-white hover:opacity-90",
+  danger: "bg-blood-ink text-white hover:opacity-90 shadow-1",
+  success: "bg-safe-ink text-white hover:opacity-90 shadow-1",
 };
 
 const SIZES: Record<ButtonSize, string> = {
