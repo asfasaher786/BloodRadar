@@ -250,12 +250,8 @@ h3, h4 { letter-spacing: -0.02em; }
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.15); opacity: 0.85; }
 }
-@keyframes ticker {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
-}
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes fade-in {
@@ -283,7 +279,7 @@ h3, h4 { letter-spacing: -0.02em; }
 .fade-up { animation: fade-up var(--duration-slow) var(--ease-standard) forwards; }
 .fade-in { animation: fade-in var(--duration-base) var(--ease-standard) forwards; }
 .scale-in { animation: scale-in var(--duration-base) var(--ease-standard) forwards; }
-.sos-ring { animation: sos-flash 1.5s ease infinite; }
+.sos-ring { animation: sos-flash 1.2s var(--ease-standard) forwards; }
 .live-highlight { animation: live-highlight 1.2s var(--ease-standard); }
 
 /* Skeleton loader — used by <Skeleton/> and loading states. */

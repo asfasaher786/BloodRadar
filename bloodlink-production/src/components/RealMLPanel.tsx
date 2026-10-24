@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { API_BASE } from "../lib/api";
 import { Brain, RefreshCw, MapPin } from "lucide-react";
+import { SkeletonStats } from "./ui/Skeleton";
+import ListState from "./ui/ListState";
 
 interface ModelStatus {
   totalRealRequests: number;
@@ -12,23 +14,29 @@ interface ModelStatus {
 
 export default function RealMLPanel() {
   const [status, setStatus] = useState<ModelStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
   const [testText, setTestText] = useState("");
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [clustering, setClustering] = useState<any>(null);
+  const [clusteringError, setClusteringError] = useState(false);
 
   const loadStatus = async () => {
+    setStatusError(false);
     try {
       const res = await fetch(`${API_BASE}/api/ml/real-status`);
       if (res.ok) setStatus(await res.json());
-    } catch (e) { console.error(e); }
+      else setStatusError(true);
+    } catch (e) { console.error(e); setStatusError(true); }
   };
 
   const loadClustering = async () => {
+    setClusteringError(false);
     try {
       const res = await fetch(`${API_BASE}/api/ml/real-donor-clustering?k=3`);
       if (res.ok) setClustering(await res.json());
-    } catch (e) { console.error(e); }
+      else setClusteringError(true);
+    } catch (e) { console.error(e); setClusteringError(true); }
   };
 
   useEffect(() => {
@@ -99,8 +107,17 @@ export default function RealMLPanel() {
                 : `Not enough real data yet. Needs ${status.minRequired - status.labeledExamples} more real requests before predictions can be trusted.`}
             </p>
           </div>
+        ) : statusError ? (
+          <ListState
+            kind="error"
+            title="Couldn't load the model status."
+            sub="Check your connection and try again."
+            actionLabel="Try again"
+            onAction={loadStatus}
+            className="py-6"
+          />
         ) : (
-          <p className="text-xs text-[var(--muted)]">Loading...</p>
+          <SkeletonStats />
         )}
       </div>
 
@@ -158,8 +175,17 @@ export default function RealMLPanel() {
               </div>
             ))}
           </div>
+        ) : clusteringError ? (
+          <ListState
+            kind="error"
+            title="Couldn't load donor clusters."
+            sub="Check your connection and try again."
+            actionLabel="Try again"
+            onAction={loadClustering}
+            className="py-6"
+          />
         ) : (
-          <p className="text-xs text-[var(--muted)]">Loading...</p>
+          <SkeletonStats />
         )}
       </div>
     </div>

@@ -21,6 +21,7 @@ import Badge from "./components/ui/Badge";
 import PageSkeleton from "./components/PageSkeleton";
 import AnimatedNumber from "./components/ui/AnimatedNumber";
 import Skeleton, { SkeletonStats } from "./components/ui/Skeleton";
+import ListState from "./components/ui/ListState";
 import SosReportButton from "./components/SosReportButton";
 import HowItWorks from "./components/HowItWorks";
 import { BecomeDonorBand, TrustBand } from "./components/HomeBands";
@@ -100,6 +101,7 @@ export default function App() {
   const [activeDonorTab, setActiveDonorTab] = useState<'search' | 'register'>('search');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [highlightedSosIds, setHighlightedSosIds] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
@@ -117,6 +119,7 @@ export default function App() {
   const highlightTimerRef = useRef<number | null>(null);
 
   const loadData = async () => {
+    setLoadFailed(false);
     try {
       const [hospRes, campRes, donorRes, emergRes, notifRes, meRes] = await Promise.all([
         fetch(`${API_BASE}/api/hospitals`),
@@ -162,6 +165,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("Data load failed:", e);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -638,21 +642,31 @@ export default function App() {
               : `${pendingEmergencies.length} active emergencies pending.`}
           </p>
           {emergencies.length === 0 ? (
-            <div className="px-5 py-12 text-center">
-              <p className="text-base font-semibold" style={{ color: 'var(--ink)' }}>No open requests right now. That's good news.</p>
-              <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed" style={{ color: 'var(--muted)' }}>
-                If you can give blood,{" "}
-                <a
-                  href="#donor-search"
-                  onClick={() => setActiveDonorTab('register')}
-                  className="font-semibold underline underline-offset-2 transition-opacity hover:opacity-75"
-                  style={{ color: 'var(--blood)' }}
-                >
-                  be the first to register as a donor
-                </a>{" "}
-                — you'll be alerted the moment someone needs your group.
-              </p>
-            </div>
+            loadFailed ? (
+              <ListState
+                kind="error"
+                title="Couldn't reach the server."
+                sub="Check your connection and try again. In an emergency, call the hospital blood bank directly."
+                actionLabel="Try again"
+                onAction={loadData}
+              />
+            ) : (
+              <div className="px-5 py-12 text-center">
+                <p className="text-base font-semibold" style={{ color: 'var(--ink)' }}>No open requests right now. That's good news.</p>
+                <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed" style={{ color: 'var(--muted)' }}>
+                  If you can give blood,{" "}
+                  <a
+                    href="#donor-search"
+                    onClick={() => setActiveDonorTab('register')}
+                    className="font-semibold underline underline-offset-2 transition-opacity hover:opacity-75"
+                    style={{ color: 'var(--blood)' }}
+                  >
+                    be the first to register as a donor
+                  </a>{" "}
+                  — you'll be alerted the moment someone needs your group.
+                </p>
+              </div>
+            )
           ) : (
             <div className="p-5 flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory sm:grid sm:grid-cols-2 sm:overflow-visible">
               {emergencies.map(sos => (
@@ -809,6 +823,23 @@ export default function App() {
                       </button>
                     ))}
                     </div>
+                    {hospitals.length === 0 && (
+                      loadFailed ? (
+                        <ListState
+                          kind="error"
+                          title="Couldn't load hospital listings."
+                          sub="Check your connection and try again. In an emergency, call the hospital blood bank directly."
+                          actionLabel="Try again"
+                          onAction={loadData}
+                        />
+                      ) : (
+                        <ListState
+                          kind="empty"
+                          title="No hospital listings yet."
+                          sub="We're building this directory. Call PIMS or Holy Family directly if you need blood now."
+                        />
+                      )
+                    )}
                   </motion.div>
                 )}
                 {activeTab === 'camps' && (
@@ -847,6 +878,23 @@ export default function App() {
                       </div>
                     ))}
                     </div>
+                    {camps.length === 0 && (
+                      loadFailed ? (
+                        <ListState
+                          kind="error"
+                          title="Couldn't load camp listings."
+                          sub="Check your connection and try again."
+                          actionLabel="Try again"
+                          onAction={loadData}
+                        />
+                      ) : (
+                        <ListState
+                          kind="empty"
+                          title="No camps scheduled right now."
+                          sub="Check back soon, or register as a donor to be alerted about the next drive."
+                        />
+                      )
+                    )}
                   </motion.div>
                 )}
                 {activeTab === 'analytics' && <motion.div key="analytics" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}><StatsDashboard /></Suspense></motion.div>}

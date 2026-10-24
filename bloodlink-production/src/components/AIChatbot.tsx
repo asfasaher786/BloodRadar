@@ -147,7 +147,7 @@ export default function AIChatbot({ onEmergencyTriggered }: AIChatbotProps) {
           aria-label="Toggle BloodRadar Assistant chat"
           className="flex items-center gap-2.5 px-4.5 py-3.5 rounded-full bg-[var(--blood)] hover:brightness-110 text-white font-medium shadow-xl shadow-rose-200 border border-rose-400"
         >
-          <Sparkles className="w-5 h-5 animate-pulse" />
+          <Sparkles className="w-5 h-5" />
           <span className="text-sm tracking-wide font-sans font-semibold">
             BloodRadar Assistant
           </span>

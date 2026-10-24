@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { API_BASE } from "../lib/api";
 import { Inbox, CheckCircle2, XCircle, PhoneCall, Loader2, Heart } from "lucide-react";
+import Skeleton from "./ui/Skeleton";
+import ListState from "./ui/ListState";
 
 interface InboxItem {
   id: string;
@@ -32,11 +34,13 @@ interface DonorInboxProps {
 export default function DonorInbox({ onChanged }: DonorInboxProps) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [acceptedInfo, setAcceptedInfo] = useState<AcceptedInfo | null>(null);
 
   const loadInbox = async () => {
+    setLoadError(false);
     try {
       const res = await fetch(`${API_BASE}/api/donors/inbox`, { credentials: "include" });
       if (res.ok) {
@@ -46,7 +50,8 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
         setItems([]);
       }
     } catch {
-      /* keep last known list on transient failure */
+      /* keep last known list on transient failure, but say so honestly */
+      setLoadError(true);
     } finally {
       setLoaded(true);
     }
@@ -110,7 +115,7 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
   };
 
   const openItems = items.filter(i => i.status === 'open');
-  if (loaded && openItems.length === 0 && !acceptedInfo) return null;
+  if (loaded && !loadError && openItems.length === 0 && !acceptedInfo) return null;
 
   return (
     <div id="donor-inbox-card" className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
@@ -196,9 +201,20 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
 
       {error && <p className="text-xs mt-2 font-sans" style={{ color: 'var(--danger-text)' }}>{error}</p>}
       {!loaded && (
-        <div className="flex items-center gap-2 text-xs font-mono py-2" style={{ color: 'var(--muted)' }}>
-          <Loader2 className="w-3 h-3 animate-spin" /> Checking requests...
+        <div className="space-y-2.5" aria-hidden="true">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
         </div>
+      )}
+      {loaded && loadError && (
+        <ListState
+          kind="error"
+          title="Couldn't load your requests."
+          sub="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={loadInbox}
+          className="py-6"
+        />
       )}
     </div>
   );

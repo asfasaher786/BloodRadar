@@ -1,12 +1,24 @@
+import { useEffect, useState } from "react";
 import Skeleton from "./ui/Skeleton";
+import BrandMark from "./ui/BrandMark";
 
 /**
  * Full-page loading skeleton that mirrors the real layout (nav, hero,
  * map, directory, SOS board, right column) so the first paint is stable
  * and honest: users see structure, not a blank screen or fake content.
  * Wrap in role="status" + sr-only text by the caller for screen readers.
+ *
+ * Free-tier cold start: after 3s of waiting the skeleton admits what is
+ * happening ("Waking up the server…") instead of shimmering forever.
  */
 export default function PageSkeleton() {
+  const [waited, setWaited] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setWaited(true), 3000);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--surface)" }} aria-busy="true">
       {/* Nav skeleton */}
@@ -22,6 +34,23 @@ export default function PageSkeleton() {
           <Skeleton className="h-9 w-24 rounded-lg" />
         </div>
       </header>
+
+      {/* Honest wait notice — appears only after 3s (free-tier cold start). */}
+      {waited && (
+        <div
+          role="status"
+          className="flex items-center justify-center gap-2.5 px-4 py-2.5 border-b"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <BrandMark className="w-5 h-5 shrink-0" />
+          <p className="text-xs font-semibold" style={{ color: "var(--muted)" }}>
+            Waking up the server…
+          </p>
+          <p className="text-xs hidden sm:inline" style={{ color: "var(--muted)" }}>
+            Free-tier servers sleep when idle — the first load takes a moment.
+          </p>
+        </div>
+      )}
 
       {/* Hero skeleton */}
       <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 pb-8 grid grid-cols-1 lg:grid-cols-12 gap-8">

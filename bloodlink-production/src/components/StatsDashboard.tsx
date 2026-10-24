@@ -5,6 +5,8 @@ import {
   PieChart, Pie, Cell 
 } from "recharts";
 import { Activity, ShieldAlert, Award, ActivitySquare, TrendingUp, Users } from "lucide-react";
+import { SkeletonStats } from "./ui/Skeleton";
+import ListState from "./ui/ListState";
 
 interface StatsData {
   totals: {
@@ -20,29 +22,47 @@ interface StatsData {
 export default function StatsDashboard() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        const response = await fetch(`${API_BASE}/api/stats`);
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        }
-      } catch (e) {
-        console.error("Failed to load statistics dashboard data: ", e);
-      } finally {
-        setLoading(false);
+  const fetchStats = async () => {
+    setLoadFailed(false);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/stats`);
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      } else {
+        setLoadFailed(true);
       }
+    } catch (e) {
+      console.error("Failed to load statistics dashboard data: ", e);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
     }
-    fetchStats();
-  }, []);
+  };
 
-  if (loading || !stats) {
+  useEffect(() => { fetchStats(); }, []);
+
+  if (loading) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center bg-[var(--card)] border border-slate-250 rounded-2xl">
-        <div className="w-8 h-8 border-4 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs text-[var(--muted)] mt-2 font-mono">Compiling clinical registry insights...</p>
+      <div className="bg-[var(--card)] border border-slate-250 rounded-2xl p-5" role="status" aria-label="Loading statistics">
+        <SkeletonStats />
+      </div>
+    );
+  }
+
+  if (!stats || loadFailed) {
+    return (
+      <div className="bg-[var(--card)] border border-slate-250 rounded-2xl">
+        <ListState
+          kind="error"
+          title="Couldn't load the statistics."
+          sub="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={fetchStats}
+        />
       </div>
     );
   }
@@ -60,7 +80,7 @@ export default function StatsDashboard() {
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
+            <span className="block text-xs uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
               {'Verified Donors'}
             </span>
             <span className="block text-xl font-extrabold text-[var(--ink)] mt-0.5">{stats.totals.totalDonors}</span>
@@ -69,11 +89,11 @@ export default function StatsDashboard() {
 
         {/* Live Active SOS */}
         <div className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center gap-3 shadow-sm">
-          <div className="w-10 h-10 rounded-lg bg-red-50 text-red-650 flex items-center justify-center animate-pulse shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-red-50 text-red-650 flex items-center justify-center shrink-0">
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
+            <span className="block text-xs uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
               {'Active SOS Request'}
             </span>
             <span className="block text-xl font-extrabold text-red-650 mt-0.5">{stats.totals.activeSOS}</span>
@@ -86,7 +106,7 @@ export default function StatsDashboard() {
             <Award className="w-5 h-5" />
           </div>
           <div>
-            <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
+            <span className="block text-xs uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
               {'Urgent Saved Lives'}
             </span>
             <span className="block text-xl font-extrabold text-[var(--safe)] mt-0.5">{stats.totals.fulfilledSOS}</span>
@@ -99,7 +119,7 @@ export default function StatsDashboard() {
             <ActivitySquare className="w-5 h-5" />
           </div>
           <div>
-            <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
+            <span className="block text-xs uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
               {'Ongoing Drives'}
             </span>
             <span className="block text-xl font-extrabold text-amber-600 mt-0.5">{stats.totals.registeredCamps}</span>
@@ -152,22 +172,28 @@ export default function StatsDashboard() {
             {'Hospital Blood Banks Stocks Status'}
           </h3>
           <div className="h-56 w-full">
+            {stats.hospitalAvailability.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>No hospital stock data yet.</p>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={stats.hospitalAvailability}
                 margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e2e8f0", borderRadius: "10px", color: "#0f172a" }} 
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: "10px" }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
                 <Bar dataKey="In Stock Groups" fill="#10b981" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Critical/Low Groups" fill="#ef4444" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>

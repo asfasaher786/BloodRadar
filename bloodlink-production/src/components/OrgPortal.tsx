@@ -49,13 +49,12 @@ interface OrgSos {
 }
 
 interface Props {
-  lang?: "en";
   hospitals: Hospital[];
   /** Called after any data-changing action so the public board/hospital list refresh. */
   onDataChanged: () => void;
 }
 
-export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Props) {
+export default function OrgPortal({ hospitals, onDataChanged }: Props) {
   // Session + org state.
   const [me, setMe] = useState<{ phone: string; role: string } | null | "loading">("loading");
   const [org, setOrg] = useState<OrgRecord | null>(null);
@@ -340,7 +339,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
           <Building2 className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
           Organization Portal
         </h2>
-        <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
           For NGOs and hospital blood banks. Every organization is verified by a BloodRadar admin before it can act.
         </p>
       </div>
@@ -383,7 +382,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
                 inputMode="numeric"
               />
               {devOtpHint && (
-                <p className="text-[10px] font-mono" role="note" style={{ color: 'var(--warn-ink)' }}>
+                <p className="text-xs font-mono" role="note" style={{ color: 'var(--warn-ink)' }}>
                   Test mode — your code is {devOtpHint}
                 </p>
               )}
@@ -487,7 +486,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
               <h3 className="font-display font-bold text-xs mb-1" style={{ color: 'var(--ink)' }}>
                 Blood-bank stock — {org.hospitalName}
               </h3>
-              <p className="text-[10px] mb-3" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
                 Every save stamps today's date on the public directory. Update only what changed.
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -498,7 +497,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
                       aria-label={`${g} stock level`}
                       value={stock[g] || "In Stock"}
                       onChange={(e) => setStock(prev => ({ ...prev, [g]: e.target.value }))}
-                      className="flex-1 h-8 px-2 rounded-lg bg-card border border-border text-[11px] text-ink cursor-pointer"
+                      className="flex-1 h-8 px-2 rounded-lg bg-card border border-border text-xs text-ink cursor-pointer"
                     >
                       {STOCK_LEVELS.map(level => (
                         <option key={level} value={level}>{level}</option>
@@ -511,7 +510,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
                 Save stock update
               </Button>
               {stockMsg && (
-                <p className={`text-[11px] mt-2 ${stockMsg.ok ? 'text-safe-ink' : 'text-blood'}`} role={stockMsg.ok ? "status" : "alert"}>
+                <p className={`text-xs mt-2 ${stockMsg.ok ? 'text-safe-ink' : 'text-blood'}`} role={stockMsg.ok ? "status" : "alert"}>
                   {stockMsg.text}
                 </p>
               )}
@@ -524,7 +523,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
               <HeartHandshake className="w-3.5 h-3.5" style={{ color: 'var(--blood)' }} aria-hidden="true" />
               Post a request on behalf of a patient
             </h3>
-            <p className="text-[10px] mb-3" style={{ color: 'var(--muted)' }}>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
               The request appears on the public board labelled with {org.name} so donors know a verified organization vouches for it.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -564,7 +563,7 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
               Post request
             </Button>
             {postMsg && (
-              <p className={`text-[11px] mt-2 ${postMsg.ok ? 'text-safe-ink' : 'text-blood'}`} role={postMsg.ok ? "status" : "alert"}>
+              <p className={`text-xs mt-2 ${postMsg.ok ? 'text-safe-ink' : 'text-blood'}`} role={postMsg.ok ? "status" : "alert"}>
                 {postMsg.text}
               </p>
             )}
@@ -576,19 +575,19 @@ export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Pro
               {org.name}'s requests ({ownRequests.length})
             </h3>
             {ownRequests.length === 0 ? (
-              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 No requests posted yet. Requests you post appear here — close them once the blood arrives.
               </p>
             ) : (
               <ul className="space-y-2">
                 {ownRequests.map(sos => (
                   <li key={sos.id} className="p-3 rounded-xl border flex flex-wrap items-center gap-2" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[11px] font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>
                       {sos.bloodGroup}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-semibold truncate" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted)' }}>{sos.hospitalName}</div>
+                      <div className="text-xs" style={{ color: 'var(--muted)' }}>{sos.hospitalName}</div>
                     </div>
                     {sos.status === "Pending" ? (
                       <div className="flex gap-1.5">

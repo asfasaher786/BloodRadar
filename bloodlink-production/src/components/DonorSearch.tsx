@@ -233,7 +233,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
           <h2 className="text-base md:text-lg font-sans font-bold text-[var(--ink)] flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-[var(--blood)] animate-pulse" />
+            <CheckCircle className="w-5 h-5 text-[var(--blood)]" />
             Savior Network & Registry
           </h2>
           <p className="text-xs text-[var(--muted)] mt-0.5 font-sans">
@@ -539,7 +539,10 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
 
                             {reviewSuccess ? (
                               <div className="absolute inset-0 bg-[var(--safe)]/8/95 flex flex-col items-center justify-center p-3 rounded-xl text-center border border-emerald-250">
-                                <CheckCircle className="w-7 h-7 text-[var(--safe)] mb-1.5 animate-bounce" />
+                                <div className="relative flex items-center justify-center">
+                                  <span className="absolute inline-flex h-14 w-14 rounded-full border-2 border-emerald-300 success-ripple" aria-hidden="true" />
+                                  <CheckCircle className="w-7 h-7 text-[var(--safe)] mb-1.5" />
+                                </div>
                                 <p className="text-xs font-bold text-emerald-800">{reviewSuccess}</p>
                                 <button
                                   onClick={() => setReviewSuccess(null)}
@@ -664,7 +667,10 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
 
           {registerSuccess ? (
             <div className="p-5 bg-[var(--safe)]/8/70 border border-[var(--safe)]/30 rounded-2xl text-center space-y-3">
-              <CheckCircle className="w-10 h-10 text-emerald-605 mx-auto animate-bounce" />
+              <div className="relative flex items-center justify-center">
+                <span className="absolute inline-flex h-16 w-16 rounded-full border-2 border-emerald-300 success-ripple" aria-hidden="true" />
+                <CheckCircle className="w-10 h-10 text-emerald-605 mx-auto" />
+              </div>
               <h4 className="font-bold text-emerald-900 text-sm">
                 Welcome to the Savior Network
               </h4>

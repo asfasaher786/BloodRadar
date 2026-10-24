@@ -399,7 +399,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
             <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--blood)' }}>
               {reveal.status === 'fulfilled' || reveal.status === 'donor-accepted'
                 ? <CheckCircle2 className="w-5 h-5 text-white" />
-                : <BellRing className="w-5 h-5 text-white animate-pulse" />}
+                : <BellRing className="w-5 h-5 text-white" />}
             </div>
             <div className="flex-1 min-w-0">
               {reveal.status === 'fulfilled' ? (
