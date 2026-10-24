@@ -23,14 +23,13 @@ interface AcceptedInfo {
 }
 
 interface DonorInboxProps {
-  lang?: 'en' | 'ur';
   onChanged?: () => void;
 }
 
 // Contact requests waiting on THIS donor (proven by their login session).
 // The requester's number stays masked until the donor accepts — then both
 // sides get each other's real number (first-accept-wins, audit-logged).
-export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) {
+export default function DonorInbox({ onChanged }: DonorInboxProps) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -79,10 +78,10 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
         await loadInbox();
         onChanged?.();
       } else {
-        setError(data.error || (lang === 'en' ? "Couldn't accept. Try again." : "قبول نہیں ہو سکا۔ دوبارہ کوشش کریں۔"));
+        setError(data.error || "Couldn't accept. Try again.");
       }
     } catch {
-      setError(lang === 'en' ? "Network error. Try again." : "نیٹ ورک میں خرابی۔");
+      setError("Network error. Try again.");
     } finally {
       setBusyId(null);
     }
@@ -101,10 +100,10 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
         onChanged?.();
       } else {
         const data = await res.json();
-        setError(data.error || (lang === 'en' ? "Couldn't decline. Try again." : "مسترد نہیں ہو سکا۔"));
+        setError(data.error || "Couldn't decline. Try again.");
       }
     } catch {
-      setError(lang === 'en' ? "Network error. Try again." : "نیٹ ورک میں خرابی۔");
+      setError("Network error. Try again.");
     } finally {
       setBusyId(null);
     }
@@ -121,10 +120,10 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
         </div>
         <div>
           <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>
-            {lang === 'en' ? 'Contact Requests' : 'رابطے کی درخواستیں'}
+            Contact Requests
           </h2>
-          <p className="text-[10px] font-mono" style={{ color: 'var(--muted)' }}>
-            {lang === 'en' ? `${openItems.length} waiting for your help` : `${openItems.length} آپ کی مدد کے منتظر`}
+          <p className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
+            {openItems.length} waiting for your help
           </p>
         </div>
       </div>
@@ -132,22 +131,22 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
       {acceptedInfo && (
         <div className="mb-4 p-3 rounded-xl flex items-center justify-between gap-3" style={{ background: 'rgba(0,196,140,0.08)', border: '1px solid rgba(0,196,140,0.3)' }}>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold font-sans" style={{ color: 'var(--ink)' }}>
-              {lang === 'en' ? 'Number shared — call the patient now' : 'نمبر شیئر ہو گیا — ابھی کال کریں'}
+            <p className="text-xs font-bold font-sans" style={{ color: 'var(--ink)' }}>
+              Number shared — call the patient now
             </p>
             {acceptedInfo.sos && (
-              <p className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
                 {acceptedInfo.sos.patientName} · {acceptedInfo.sos.bloodGroup} · {acceptedInfo.sos.hospitalName}
               </p>
             )}
           </div>
           <a
             href={`tel:${acceptedInfo.requesterPhone}`}
-            className="px-3 py-2 rounded-lg text-[11px] font-bold text-white flex items-center gap-1.5 shrink-0 transition"
+            className="px-3 py-2 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 shrink-0 transition"
             style={{ background: 'var(--safe-ink)' }}
           >
             <PhoneCall className="w-3.5 h-3.5" />
-            {lang === 'en' ? 'Call' : 'کال'}
+            Call
           </a>
         </div>
       )}
@@ -158,15 +157,15 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" style={{ background: 'var(--blood)' }}>{item.bloodGroup}</span>
+                  <span className="px-1.5 py-0.5 rounded text-xs font-mono font-bold text-white" style={{ background: 'var(--blood)' }}>{item.bloodGroup}</span>
                   <span className="text-xs font-bold font-sans truncate" style={{ color: 'var(--ink)' }}>{item.patientName}</span>
                 </div>
-                <p className="text-[10px] font-mono mt-1" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs font-mono mt-1" style={{ color: 'var(--muted)' }}>
                   {item.hospitalName} · {item.city} · {item.unitsNeeded} unit{item.unitsNeeded > 1 ? 's' : ''}
                 </p>
-                <p className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
                   <Heart className="w-3 h-3 inline mr-0.5" style={{ color: 'var(--blood)' }} />
-                  {lang === 'en' ? 'Requester: ' : 'درخواست گزار: '}
+                  Requester:{' '}
                   <span className="font-bold" style={{ color: 'var(--ink)' }}>{item.requesterPhone}</span>
                 </p>
               </div>
@@ -175,30 +174,30 @@ export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) 
               <button
                 onClick={() => handleAccept(item.id)}
                 disabled={busyId === item.id}
-                className="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center justify-center gap-1 transition disabled:opacity-50"
+                className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 transition disabled:opacity-50"
                 style={{ background: 'var(--safe-ink)' }}
               >
                 {busyId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                {lang === 'en' ? 'Accept & Share My Number' : 'قبول کریں اور نمبر شیئر کریں'}
+                Accept & Share My Number
               </button>
               <button
                 onClick={() => handleDecline(item.id)}
                 disabled={busyId === item.id}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition disabled:opacity-50"
                 style={{ background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.25)', color: 'var(--blood)' }}
               >
                 <XCircle className="w-3 h-3" />
-                {lang === 'en' ? 'Decline' : 'مسترد'}
+                Decline
               </button>
             </div>
           </div>
         ))}
       </div>
 
-      {error && <p className="text-[10px] mt-2 font-sans" style={{ color: 'var(--blood)' }}>{error}</p>}
+      {error && <p className="text-xs mt-2 font-sans" style={{ color: 'var(--danger-text)' }}>{error}</p>}
       {!loaded && (
-        <div className="flex items-center gap-2 text-[10px] font-mono py-2" style={{ color: 'var(--muted)' }}>
-          <Loader2 className="w-3 h-3 animate-spin" /> {lang === 'en' ? 'Checking requests...' : 'درخواستیں چیک ہو رہی ہیں...'}
+        <div className="flex items-center gap-2 text-xs font-mono py-2" style={{ color: 'var(--muted)' }}>
+          <Loader2 className="w-3 h-3 animate-spin" /> Checking requests...
         </div>
       )}
     </div>

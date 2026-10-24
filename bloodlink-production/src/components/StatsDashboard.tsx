@@ -17,11 +17,7 @@ interface StatsData {
   hospitalAvailability: { name: string; "In Stock Groups": number; "Critical/Low Groups": number }[];
 }
 
-interface StatsDashboardProps {
-  lang?: 'en' | 'ur';
-}
-
-export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
+export default function StatsDashboard() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,7 +61,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
           </div>
           <div>
             <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
-              {lang === 'en' ? 'Verified Donors' : 'درج شدہ مستقل مہم'}
+              {'Verified Donors'}
             </span>
             <span className="block text-xl font-extrabold text-[var(--ink)] mt-0.5">{stats.totals.totalDonors}</span>
           </div>
@@ -78,7 +74,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
           </div>
           <div>
             <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
-              {lang === 'en' ? 'Active SOS Request' : 'ایس او ایس ایمرجنسی'}
+              {'Active SOS Request'}
             </span>
             <span className="block text-xl font-extrabold text-red-650 mt-0.5">{stats.totals.activeSOS}</span>
           </div>
@@ -91,7 +87,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
           </div>
           <div>
             <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
-              {lang === 'en' ? 'Urgent Saved Lives' : 'بچائی گئی زندگیاں'}
+              {'Urgent Saved Lives'}
             </span>
             <span className="block text-xl font-extrabold text-[var(--safe)] mt-0.5">{stats.totals.fulfilledSOS}</span>
           </div>
@@ -104,7 +100,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
           </div>
           <div>
             <span className="block text-[10px] uppercase text-[var(--muted)] font-mono tracking-wider font-semibold">
-              {lang === 'en' ? 'Ongoing Drives' : 'فعال بلڈ کیمپ'}
+              {'Ongoing Drives'}
             </span>
             <span className="block text-xl font-extrabold text-amber-600 mt-0.5">{stats.totals.registeredCamps}</span>
           </div>
@@ -117,7 +113,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
         <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-sm">
           <h3 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
             <TrendingUp className="w-4.5 h-4.5 text-[var(--blood)]" />
-            {lang === 'en' ? 'Twin Cities Donor Blood Type Mix' : 'خون کے گروپوں کی شرح تقسیم'}
+            {'Twin Cities Donor Blood Type Mix'}
           </h3>
           <div className="h-56 w-full flex items-center justify-center">
             {stats.bloodDistribution.length === 0 ? (
@@ -153,7 +149,7 @@ export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
         <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-sm">
           <h3 className="text-sm font-bold text-[var(--ink)] font-sans mb-4 flex items-center gap-2">
             <Activity className="w-4.5 h-4.5 text-[var(--blood)]" />
-            {lang === 'en' ? 'Hospital Blood Banks Stocks Status' : 'راولپنڈی و اسلام آباد ہسپتال بلڈ سٹاک لسٹ'}
+            {'Hospital Blood Banks Stocks Status'}
           </h3>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">

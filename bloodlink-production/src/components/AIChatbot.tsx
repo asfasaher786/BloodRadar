@@ -1,23 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { ChatMessage } from "../types";
 import { API_BASE } from "../lib/api";
-import { motion, AnimatePresence } from "motion/react";
-import { MessageSquare, Send, X, AlertOctagon, HelpCircle, HeartHandshake, Volume2, Sparkles, Loader2 } from "lucide-react";
+import { motion } from "motion/react";
+import { MessageSquare, Send, X, AlertOctagon, HeartHandshake, Volume2, Sparkles, Loader2 } from "lucide-react";
 
 interface AIChatbotProps {
-  lang?: 'en' | 'ur';
   onEmergencyTriggered: () => void;
 }
 
-export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatbotProps) {
+export default function AIChatbot({ onEmergencyTriggered }: AIChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome-ai",
       sender: "ai",
-      text: lang === 'en' 
-        ? "Assalam-o-Alaikum! I am your BloodRadar Assistant. You can ask me about donor compatibilities, nearby Islamabad/Rawalpindi hospital statuses, or triage active emergencies instantly." 
-        : "السلام علیکم! میں بلڈ ریڈار AI اسسٹنٹ ہوں۔ آپ مجھ سے خون کے گروپوں کی مطابقت، راولپنڈی اور اسلام آباد کے قریبی ہسپتالوں کی صورتحال، یا ہنگامی حالات کے بارے میں پوچھ سکتے ہیں۔",
+      text: "Assalam-o-Alaikum! I am your BloodRadar Assistant. You can ask me about donor compatibilities, nearby Islamabad/Rawalpindi hospital statuses, or triage active emergencies instantly.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -50,40 +47,27 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen]);
 
-  // Suggested Quick replies
-  const suggestions = lang === 'en' 
-    ? [
-        "Compatible donors for O-",
-        "PIMS Islamabad blood info",
-        "Saddar Rawalpindi camps",
-        "Emergency SOS Help"
-      ]
-    : [
-        "O منفی کے لیے موزوں عطیہ دہندگان",
-        "پمز اسلام آباد میں خون کی صورتحال",
-        "صدر راولپنڈی کے خون کیمپ",
-        "فوری SOS مدد"
-      ];
+  // Suggested quick replies
+  const suggestions = [
+    "Compatible donors for O-",
+    "PIMS Islamabad blood info",
+    "Saddar Rawalpindi camps",
+    "Emergency SOS Help"
+  ];
 
   // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // Handle Speech synthesis (fallback to Web Speech API)
+  // Speech synthesis via the Web Speech API (English).
   const speakText = (text: string) => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    
+
     const cleanText = text.replace(/[#*`_]/g, ''); // strip markdown syntax
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // Set speech voice parameters
-    if (lang === 'ur') {
-      utterance.lang = 'ur-PK';
-    } else {
-      utterance.lang = 'en-US';
-    }
+    utterance.lang = 'en-US';
     utterance.rate = 1.0;
 
     utterance.onstart = () => setSpeechActive(true);
@@ -114,7 +98,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
         body: JSON.stringify({
           message: textToSend,
           sessionId: "bloodradar_session_user",
-          language: lang
+          language: "en"
         })
       });
 
@@ -136,9 +120,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
       const fallbackReply: ChatMessage = {
         id: "msg-" + Date.now() + "-fallback",
         sender: "ai",
-        text: lang === 'en' 
-          ? "I am blood helper AI. I recommend you access the SOS form or contact PIMS / Holy Family directly. Dial 1122 immediately for urgent issues."
-          : "میں خونی معاون ہوں۔ ہم آپ کو ہیلپ لائن 1122 اور قریبی ہسپتالوں سے رابطہ کرنے کا مشورہ دیتے ہیں۔",
+        text: "I am the BloodRadar assistant. I recommend you open the SOS form or contact PIMS / Holy Family directly. Dial 1122 immediately for urgent issues.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isEmergencyAlert: isSOS,
         source: "fallback"
@@ -162,12 +144,12 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
-          aria-label={lang === 'en' ? 'Toggle BloodRadar Assistant chat' : 'بلڈ ریڈار اسسٹنٹ چیٹ کھولیں/بند کریں'}
+          aria-label="Toggle BloodRadar Assistant chat"
           className="flex items-center gap-2.5 px-4.5 py-3.5 rounded-full bg-[var(--blood)] hover:brightness-110 text-white font-medium shadow-xl shadow-rose-200 border border-rose-400"
         >
           <Sparkles className="w-5 h-5 animate-pulse" />
           <span className="text-sm tracking-wide font-sans font-semibold">
-            {lang === 'en' ? 'BloodRadar Assistant' : 'بلڈ ریڈار کونسلر'}
+            BloodRadar Assistant
           </span>
           <span className="flex h-2.5 w-2.5 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -184,7 +166,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
             id="ai-chatbot-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label={lang === 'en' ? 'BloodRadar Medical Companion chat' : 'بلڈ ریڈار میڈیکل اسسٹنٹ چیٹ'}
+            aria-label="BloodRadar Medical Companion chat"
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             className="fixed bottom-24 right-6 w-full max-w-sm md:max-w-md h-[550px] rounded-2.5xl bg-[var(--card)]/95 backdrop-blur-xl border border-[var(--border)] shadow-2xl z-50 flex flex-col overflow-hidden text-[var(--ink)]"
@@ -201,7 +183,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
                   </h3>
                   <div className="flex items-center gap-1.5">
                     <div className={`w-1.5 h-1.5 rounded-full ${aiEnabled === false ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`}></div>
-                    <span className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-mono">
+                    <span className="text-xs text-[var(--muted)] uppercase tracking-widest font-mono">
                       {aiEnabled === null
                         ? 'Checking status...'
                         : aiEnabled
@@ -216,7 +198,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
                   id="btn-voice-chat-speak"
                   onClick={() => speakText(messages[messages.length - 1].text)}
                   disabled={speechActive}
-                  aria-label={lang === 'en' ? 'Speak last answer' : 'آخری جواب سنائیں'}
+                  aria-label="Speak last answer"
                   className={`p-2 rounded-lg text-[var(--muted)] hover:bg-slate-100 hover:text-[var(--blood)] transition ${speechActive ? 'text-rose-550 scale-110' : ''}`}
                 >
                   <Volume2 className="w-4 h-4 text-rose-500" aria-hidden="true" />
@@ -224,7 +206,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
                 <button
                   id="btn-close-ai-chat"
                   onClick={() => setIsOpen(false)}
-                  aria-label={lang === 'en' ? 'Close assistant' : 'اسسٹنٹ بند کریں'}
+                  aria-label="Close assistant"
                   className="p-2 rounded-lg text-[var(--muted)] hover:bg-slate-100 hover:text-[var(--ink)] transition"
                 >
                   <X className="w-4.5 h-4.5" aria-hidden="true" />
@@ -234,11 +216,9 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
 
             {/* Warning Message Box */}
             <div className="px-4 py-2 bg-red-50 border-b border-red-100 flex items-center gap-2 text-red-700 text-xs">
-              <AlertOctagon className="w-4 h-4 text-red-650 flex-shrink-0 animate-bounce" />
+              <AlertOctagon className="w-4 h-4 text-red-650 flex-shrink-0" />
               <p className="leading-relaxed font-semibold">
-                {lang === 'en' 
-                  ? "AI guidance. In case of critical trauma, please call 1122 immediately!"
-                  : "اے آئی تشخیصی معاونت۔ شدید ہنگامی صورتحال میں فوری طور پر 1122 کال کریں!"}
+                AI guidance. In case of critical trauma, call 1122 immediately.
               </p>
             </div>
 
@@ -254,18 +234,18 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
                         : 'bg-[var(--card)] border border-[var(--border)] text-slate-800 rounded-tl-none'
                   }`}>
                     {m.isEmergencyAlert && (
-                      <div className="flex items-center gap-1 text-red-650 font-bold tracking-wide uppercase text-[10px] mb-1.5">
+                      <div className="flex items-center gap-1 text-red-650 font-bold tracking-wide uppercase text-xs mb-1.5">
                         <AlertOctagon className="w-3.5 h-3.5" />
                         <span>High Urgent Triage Action Requested</span>
                       </div>
                     )}
                     {m.sender === 'ai' && m.source === 'fallback' && (
-                      <div className="flex items-center gap-1 text-[var(--warn)] font-semibold uppercase tracking-wide text-[9px] mb-1.5">
+                      <div className="flex items-center gap-1 text-[var(--warn)] font-semibold uppercase tracking-wide text-xs mb-1.5">
                         <span>Rules-based answer · no AI connected</span>
                       </div>
                     )}
                     <span className="block whitespace-pre-wrap leading-relaxed">{m.text}</span>
-                    <span className="block text-[10px] text-[var(--muted)] mt-1 text-right font-mono">
+                    <span className="block text-xs text-[var(--muted)] mt-1 text-right font-mono">
                       {m.timestamp}
                     </span>
                   </div>
@@ -302,8 +282,8 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
               <input
                 id="input-ai-chat-message"
                 type="text"
-                aria-label={lang === 'en' ? 'Ask the blood assistant' : 'معاون سے سوال پوچھیں'}
-                placeholder={lang === 'en' ? "Query blood groups, PIMS status..." : "خون کی ضرورت کا پیغام لکھیں..."}
+                aria-label="Ask the blood assistant"
+                placeholder="Query blood groups, PIMS status..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -315,7 +295,7 @@ export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatb
                 id="btn-send-ai-chat-message"
                 onClick={() => handleSend(input)}
                 disabled={loading || !input.trim()}
-                aria-label={lang === 'en' ? 'Send message' : 'پیغام بھیجیں'}
+                aria-label="Send message"
                 className="p-2.5 rounded-xl bg-[var(--blood)] hover:brightness-110 text-white transition disabled:opacity-40 cursor-pointer shrink-0"
               >
                 <Send className="w-4.5 h-4.5" aria-hidden="true" />

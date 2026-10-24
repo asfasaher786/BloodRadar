@@ -7,10 +7,9 @@ interface DonorStreakBadgeProps {
   donor: Donor;
   onToggleAvailability: (available: boolean) => void;
   onDonorUpdated: (donor: Donor) => void;
-  lang?: 'en' | 'ur';
 }
 
-export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorUpdated, lang = 'en' }: DonorStreakBadgeProps) {
+export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorUpdated }: DonorStreakBadgeProps) {
   const [loading, setLoading] = useState(false);
   const [logging, setLogging] = useState(false);
   const [logError, setLogError] = useState("");
@@ -31,7 +30,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
         const data = await response.json();
         onToggleAvailability(data.donor.isAvailable);
       } else if (response.status === 401) {
-        setLogError(lang === 'en' ? "Session expired — verify your number again." : "سیشن ختم ہو گیا — دوبارہ تصدیق کریں۔");
+        setLogError("Session expired — verify your number again.");
       }
     } catch (e) {
       console.error(e);
@@ -56,12 +55,12 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
         setLogSuccess(true);
         setTimeout(() => setLogSuccess(false), 4000);
       } else if (response.status === 401) {
-        setLogError(lang === 'en' ? "Please verify your phone number first to log donations." : "عطیہ درج کرنے کے لیے پہلے اپنا نمبر تصدیق کریں۔");
+        setLogError("Please verify your phone number first to log donations.");
       } else {
-        setLogError(data.error || (lang === 'en' ? "Couldn't log this donation." : "عطیہ درج نہیں ہو سکا۔"));
+        setLogError(data.error || "Couldn't log this donation.");
       }
     } catch {
-      setLogError(lang === 'en' ? "Network error. Try again." : "نیٹ ورک میں خرابی۔");
+      setLogError("Network error. Try again.");
     } finally {
       setLogging(false);
     }
@@ -74,15 +73,17 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
 
       <div className="flex items-start justify-between gap-3 relative z-10">
         <div>
-          <span className="px-2 py-0.5 rounded text-[10px] font-mono tracking-widest font-bold" style={{ background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.2)', color: 'var(--blood)' }}>
-            {lang === 'en' ? 'Savior Account Profile' : 'رضاکار پروفائل'}
+          <span className="px-2 py-0.5 rounded text-xs font-mono tracking-widest font-bold" style={{ background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.2)', color: 'var(--blood)' }}>
+            Donor Profile
           </span>
           <h2 className="text-sm font-display font-bold mt-1.5 flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
             {donor.name}
-            <span className="w-2 h-2 rounded-full" style={{ background: 'var(--safe)' }}></span>
+            {/* Decorative dot — the text status below carries the meaning
+                (never colour alone). */}
+            <span className="w-2 h-2 rounded-full" aria-hidden="true" style={{ background: 'var(--safe)' }}></span>
           </h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-            {lang === 'en' ? `Registered ${donor.bloodGroup} Emergency Hero` : 'مستقل ہیرو'}
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            Registered {donor.bloodGroup} donor
           </p>
         </div>
 
@@ -97,8 +98,8 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Zap className="w-4 h-4" style={{ fill: 'var(--warn-ink)' }} />
             <span>{donor.stats.streakCount}</span>
           </div>
-          <span className="block text-[10px] mt-1 font-mono" style={{ color: 'var(--muted)' }}>
-            {lang === 'en' ? 'Streak Days' : 'تسلسل دن'}
+          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+            Streak Days
           </span>
         </div>
 
@@ -107,8 +108,8 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Heart className="w-4 h-4" style={{ fill: 'var(--blood)' }} />
             <span>{donor.stats.donationsCount}</span>
           </div>
-          <span className="block text-[10px] mt-1 font-mono" style={{ color: 'var(--muted)' }}>
-            {lang === 'en' ? 'Bags Donated' : 'عطیات بیگز'}
+          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+            Bags Donated
           </span>
         </div>
 
@@ -117,19 +118,19 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Shield className="w-4 h-4" />
             <span>{donor.stats.livesSaved}</span>
           </div>
-          <span className="block text-[10px] mt-1 font-mono" style={{ color: 'var(--muted)' }}>
-            {lang === 'en' ? 'Lives Saved' : 'بچائی گئی جانیں'}
+          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+            Lives Saved
           </span>
         </div>
       </div>
 
       <div className="mt-4 relative z-10">
-        <span className="block text-[10px] font-mono uppercase font-bold tracking-wider mb-2" style={{ color: 'var(--muted)' }}>
-          {lang === 'en' ? 'Unlocked Savior Medals:' : 'حاصل کردہ اعزازات:'}
+        <span className="block text-xs font-mono uppercase font-bold tracking-wider mb-2" style={{ color: 'var(--muted)' }}>
+          Unlocked Medals:
         </span>
         <div className="flex flex-wrap gap-1.5">
           {donor.badges.map((badge, idx) => (
-            <span key={idx} className="px-2.5 py-1 rounded text-[9px] font-sans tracking-wide flex items-center gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--ink)' }}>
+            <span key={idx} className="px-2.5 py-1 rounded text-xs font-sans tracking-wide flex items-center gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--ink)' }}>
               <Award className="w-3 h-3" style={{ color: 'var(--warn-ink)' }} />
               {badge}
             </span>
@@ -138,10 +139,10 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
       </div>
 
       {donor.nextEligibleDate && (
-        <div className="mt-3 relative z-10 flex items-center gap-1.5 text-[10px] font-sans px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.2)', color: 'var(--safe-ink)' }}>
+        <div className="mt-3 relative z-10 flex items-center gap-1.5 text-xs font-sans px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(0,196,140,0.06)', border: '1px solid rgba(0,196,140,0.2)', color: 'var(--safe-ink)' }}>
           <Shield className="w-3 h-3 shrink-0" />
           <span>
-            {lang === 'en' ? `Eligible to donate again from ${donor.nextEligibleDate}` : `اگلا عطیہ ${donor.nextEligibleDate} سے ممکن`}
+            Eligible to donate again from {donor.nextEligibleDate}
           </span>
         </div>
       )}
@@ -151,31 +152,29 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
           id="btn-log-donation"
           onClick={handleLogDonation}
           disabled={logging}
-          className="w-full py-2 rounded-xl font-display font-bold text-[11px] tracking-wide transition font-sans flex items-center justify-center gap-1.5 text-white disabled:opacity-50"
+          className="w-full py-2 rounded-xl font-display font-bold text-xs tracking-wide transition font-sans flex items-center justify-center gap-1.5 text-white disabled:opacity-50"
           style={{ background: 'var(--blood)' }}
         >
           {logging ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Heart className="w-3.5 h-3.5" />}
-          {logging
-            ? (lang === 'en' ? 'Logging...' : 'درج ہو رہا ہے...')
-            : (lang === 'en' ? 'I Just Donated Blood' : 'میں نے ابھی خون عطیہ کیا')}
+          {logging ? 'Logging...' : 'I Just Donated Blood'}
         </button>
-        {logError && <p className="text-[10px] mt-1.5 text-center font-sans" style={{ color: 'var(--blood)' }}>⚠️ {logError}</p>}
+        {logError && <p className="text-xs mt-1.5 text-center font-sans" style={{ color: 'var(--danger-text)' }}>{logError}</p>}
         {logSuccess && (
-          <p className="text-[10px] mt-1.5 text-center font-sans font-semibold" style={{ color: 'var(--safe-ink)' }}>
-            {lang === 'en' ? '✅ Recorded — thank you for saving lives.' : '✅ درج ہو گیا — جان بچانے کا شکریہ۔'}
+          <p className="text-xs mt-1.5 text-center font-sans font-semibold" style={{ color: 'var(--safe-ink)' }}>
+            Recorded — thank you for saving lives.
           </p>
         )}
       </div>
 
       <div className="mt-4 pt-4 border-t flex items-center justify-between text-xs relative z-10 font-sans" style={{ borderColor: 'var(--border)' }}>
         <span style={{ color: 'var(--muted)' }}>
-          {lang === 'en' ? 'Emergency Active Status' : 'ہنگامی دستیابی کا سٹیٹس'}
+          Emergency Active Status
         </span>
         <button
           id="btn-toggle-availability-streak"
           onClick={handleToggle}
           disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all duration-300"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all duration-300"
           style={donor.isAvailable
             ? { background: 'rgba(0,196,140,0.08)', border: '1px solid rgba(0,196,140,0.3)', color: 'var(--safe-ink)' }
             : { background: 'rgba(196,18,48,0.06)', border: '1px solid rgba(196,18,48,0.25)', color: 'var(--blood)' }}
@@ -183,9 +182,9 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
           {loading ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin mx-auto" />
           ) : donor.isAvailable ? (
-            lang === 'en' ? '● AVAILABLE' : '● دستیاب'
+            '● AVAILABLE'
           ) : (
-            lang === 'en' ? '○ OFFLINE' : '○ غیر دستیاب'
+            '○ OFFLINE'
           )}
         </button>
       </div>
