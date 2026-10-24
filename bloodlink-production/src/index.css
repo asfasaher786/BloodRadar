@@ -1,14 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
 
 /* ────────────────────────────────────────────────────────────────────────────
-   BloodRadar Design Tokens
-   Crimson + warm paper + gold. Calm by default, urgent only where it matters.
-   Every color below was contrast-checked for WCAG 2.2 AA:
-   - blood on white        6.0:1  (text-safe: blood-ink 10.4:1)
-   - muted on surface      4.9:1
-   - safe-ink on white     5.4:1  (plain "safe" is 2.3:1 — decoration only)
-   - warn-ink on white     5.9:1  (plain "warn" is decoration only)
+   BloodRadar Design Tokens — "The Quiet Pulse"
+   Calm, warm, precise, alive. Urgency comes from clarity and one confident
+   red, never noise. Red is for actions and emergencies only.
    ──────────────────────────────────────────────────────────────────────────── */
 
 @theme {
@@ -16,64 +12,84 @@
   --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
 
-  /* Brand — crimson */
-  --color-blood: #C41230;        /* primary action surfaces */
-  --color-blood-hover: #A80F29;  /* primary hover / pressed */
-  --color-blood-ink: #8B0000;    /* crimson TEXT on light backgrounds (AA) */
-  --color-blood-soft: #FAE7EA;   /* subtle crimson tint background */
-  --color-blood-border: #E9A8B4; /* crimson borders */
-  --color-pulse: #FF4560;        /* animated pulse accents */
+  /* Brand — crimson (actions & emergencies only) */
+  --color-blood: #C41230;
+  --color-blood-hover: #A80F29;
+  --color-blood-dark: #8B0A1F;
+  --color-blood-tint: #FDECEF;
+  --color-blood-border: #E9A8B4;
+  --color-pulse: #FF4560;           /* glow/dots only, never text */
+  --color-danger-text: #9B0F27;     /* error text (AA on white/card) */
+
+  /* Legacy aliases — removed as components migrate to the tokens above. */
+  --color-blood-ink: #8B0A1F;
+  --color-blood-soft: #FDECEF;
+  --color-blood-light: #FF4560;
 
   /* Feedback — safe green */
-  --color-safe: #00C48C;         /* decoration / dots only (low contrast) */
-  --color-safe-ink: #007A57;     /* green TEXT (AA) */
-  --color-safe-soft: #E4F7F0;
+  --color-safe: #00C48C;            /* decoration / dots only */
+  --color-safe-text: #0A7D5A;       /* green TEXT (AA) */
+  --color-safe-tint: #E6F8F1;
+  --color-safe-ink: #0A7D5A;
+  --color-safe-soft: #E6F8F1;
 
   /* Feedback — warn amber */
-  --color-warn: #FFB300;         /* decoration / dots only */
-  --color-warn-ink: #8A5A00;     /* amber TEXT (AA) */
-  --color-warn-soft: #FFF3D6;
+  --color-warn: #FFB300;            /* decoration / dots only */
+  --color-warn-text: #7A5200;       /* amber TEXT (AA) */
+  --color-warn-tint: #FFF4D6;
+  --color-warn-ink: #7A5200;
+  --color-warn-soft: #FFF4D6;
 
-  /* Gold accent (from the logo) */
-  --color-gold: #C9A227;
-  --color-gold-ink: #7A6214;
-  --color-gold-soft: #FBF3DC;
+  /* Gold — donor badges/streaks only, never actions */
+  --color-gold: #E8B04A;
+  --color-gold-ink: #6E5310;
+  --color-gold-soft: #FBF1DC;
 
   /* Neutrals — warm paper */
-  --color-ink: #0D0D0D;
-  --color-ink-2: #1A1A2E;
-  --color-surface: #F7F2ED;
-  --color-surface-2: #EFE9E3;
+  --color-ink: #16141A;
+  --color-ink-2: #3B3744;
+  --color-surface: #F7F3EE;
+  --color-surface-2: #EFE9E2;
   --color-card: #FFFFFF;
-  --color-muted: #6B6578;
-  --color-border: #E2DDD8;
-  --color-border-strong: #8F8A82; /* form-control borders (≥3:1 vs surface AND white, WCAG 1.4.11) */
+  --color-muted: #5F5A6B;
+  --color-border: #E3DDD5;
+  --color-border-strong: #8F8A82;   /* form-control borders (≥3:1, WCAG 1.4.11) */
+  --color-wine: #2A0A12;            /* dark sections instead of black */
 
-  /* Radius (Tailwind defaults kept, plus 3xl for hero cards) */
-  --radius-3xl: 1.5rem;
+  /* Focus */
+  --color-focus: #1D4ED8;
 
-  /* Elevation */
-  --shadow-1: 0 1px 3px rgb(13 13 13 / 0.08);
-  --shadow-2: 0 4px 12px rgb(13 13 13 / 0.10);
-  --shadow-3: 0 12px 32px rgb(13 13 13 / 0.16);
+  /* Radius */
+  --radius-3xl: 1.5rem;             /* cards 16–24px, inputs/buttons 12px, pills 999 */
+
+  /* Elevation — hover-only shadows per spec */
+  --shadow-1: 0 1px 2px rgb(42 10 18 / 0.06);
+  --shadow-2: 0 6px 20px rgb(42 10 18 / 0.08);
+  --shadow-3: 0 12px 32px rgb(42 10 18 / 0.12);
+  --shadow-sos: 0 8px 24px rgb(196 18 48 / 0.28);
 }
 
 /* Legacy var() aliases — older inline styles keep working during migration.
    New code should use the Tailwind utilities (bg-blood, text-muted, …). */
 :root {
   --blood: var(--color-blood);
-  --blood-dark: var(--color-blood-ink);
+  --blood-hover: var(--color-blood-hover);
+  --blood-dark: var(--color-blood-dark);
+  --blood-tint: var(--color-blood-tint);
   --blood-light: var(--color-pulse);
   --pulse: var(--color-pulse);
+  --danger-text: var(--color-danger-text);
   --safe: var(--color-safe);
-  --safe-ink: var(--color-safe-ink);
+  --safe-ink: var(--color-safe-text);
   --warn: var(--color-warn);
-  --warn-ink: var(--color-warn-ink);
-  --warn-soft: var(--color-warn-soft);
-  --safe-soft: var(--color-safe-soft);
-  --blood-soft: var(--color-blood-soft);
+  --warn-ink: var(--color-warn-text);
+  --warn-soft: var(--color-warn-tint);
+  --safe-soft: var(--color-safe-tint);
+  --blood-soft: var(--color-blood-tint);
   --gold: var(--color-gold);
+  --wine: var(--color-wine);
   --ink: var(--color-ink);
   --ink-2: var(--color-ink-2);
   --surface: var(--color-surface);
@@ -81,65 +97,154 @@
   --card: var(--color-card);
   --muted: var(--color-muted);
   --border: var(--color-border);
+  --border-strong: var(--color-border-strong);
+  --focus: var(--color-focus);
 
   /* Motion */
-  --duration-fast: 150ms;
-  --duration-base: 250ms;
-  --duration-slow: 400ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;   /* hover */
+  --duration-base: 200ms;   /* UI */
+  --duration-slow: 320ms;   /* page */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Dark mode — wine-black paper, same crimson. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ink: #F2EDEA;
+    --color-ink-2: #C9C2C9;
+    --color-surface: #140A0E;
+    --color-surface-2: #1C1719;
+    --color-card: #1C1719;
+    --color-muted: #A79FAB;
+    --color-border: #332A30;
+    --color-border-strong: #574B54;
+    --color-blood-tint: #35121B;
+    --color-blood-soft: #35121B;
+    --color-safe-tint: #0E2A20;
+    --color-safe-soft: #0E2A20;
+    --color-warn-tint: #2B2008;
+    --color-warn-soft: #2B2008;
+    --color-gold-soft: #2B2210;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-2: 0 6px 20px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.55);
+  }
 }
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; font-size: 16px; }
 
 body {
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
   background-color: var(--color-surface);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  letter-spacing: 0.005em;
 }
 
-/* Display type (Syne) reads tighter; body (DM Sans) slightly airier. */
-h1, h2, h3, h4, .font-display { letter-spacing: -0.02em; }
-body { letter-spacing: 0.005em; }
+/* 3% SVG-noise paper grain — quiet texture over the whole page. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Type rules: Syne for H1/H2 only (tight), serif italic for one emotional
+   phrase per page, DM Sans everywhere else, JetBrains Mono for numerals. */
+h1, h2, .font-display { letter-spacing: -0.03em; }
+h3, h4 { letter-spacing: -0.02em; }
+.font-serif-accent { font-family: var(--font-serif); font-style: italic; }
 
 /* ── Brand surfaces ──────────────────────────────────────────────────────── */
 
-/* Hero backdrop: a faint crimson bloom on the warm paper, subtle enough to
-   stay calm while giving the top of the page depth. */
+/* One soft radial crimson glow (10% → transparent) behind the hero drop.
+   This is the only gradient on the page. */
 .hero-glow {
-  background:
-    radial-gradient(1200px 500px at 15% -10%, rgb(196 18 48 / 0.08), transparent 60%),
-    radial-gradient(900px 420px at 90% -20%, rgb(201 162 39 / 0.07), transparent 55%);
+  background: radial-gradient(900px 460px at 50% -8%, rgb(196 18 48 / 0.10), transparent 62%);
 }
 
-/* SOS card: gradient crimson border ring — the one surface on the page that
-   is allowed to feel urgent. */
+/* SOS card: gradient crimson border ring — the one surface allowed to feel
+   urgent. */
 .sos-card {
   border: 2px solid transparent;
   background:
     linear-gradient(var(--color-card), var(--color-card)) padding-box,
-    linear-gradient(140deg, var(--color-blood), var(--color-blood-ink) 60%, var(--color-blood-hover)) border-box;
-  box-shadow: var(--shadow-3);
+    linear-gradient(140deg, var(--color-blood), var(--color-blood-dark) 60%, var(--color-blood-hover)) border-box;
+  box-shadow: var(--shadow-sos);
 }
 
-/* ── Accessibility baseline ─────────────────────────────────────────────── */
-
-/* Visible, consistent focus ring everywhere (WCAG 2.4.7 / 2.4.13). */
-:focus-visible {
-  outline: 2px solid var(--color-blood);
-  outline-offset: 2px;
-  border-radius: 2px;
+/* Cards: paper-white, 1px border, inner highlight, shadow only on hover. */
+.brand-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
 }
-::selection { background: var(--color-blood); color: #fff; }
+.brand-card:hover { box-shadow: var(--shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.8); }
+@media (prefers-color-scheme: dark) {
+  .brand-card { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); }
+  .brand-card:hover { box-shadow: var(--shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.04); }
+}
 
-/* Keyboard users: never hide focus. */
-:focus:not(:focus-visible) { outline: none; }
+/* ── Signature motif: radar ring ─────────────────────────────────────────── */
 
-/* ── Motion (purposeful, fast) ──────────────────────────────────────────── */
+/* Section divider glyph — three thin concentric rings, 8–20% crimson. */
+.radar-glyph {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 1px solid rgb(196 18 48 / 0.20);
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.radar-glyph::before,
+.radar-glyph::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  border: 1px solid rgb(196 18 48 / 0.20);
+  inset: 4px;
+}
+.radar-glyph::after { inset: 9px; background: rgb(196 18 48 / 0.12); border: none; }
+
+/* Slow outward ping (hero drop + success ripple) — every 6s. */
+@keyframes ring-ping {
+  0% { transform: scale(0.55); opacity: 0.55; }
+  70% { opacity: 0.12; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.ring-ping { animation: ring-ping 6s var(--ease-standard) infinite; }
+.ring-ping-delay { animation: ring-ping 6s var(--ease-standard) 3s infinite; }
+
+/* Breathing hero drop — 1 → 1.03 over 4s. */
+@keyframes drop-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+.drop-breathe { animation: drop-breathe 4s ease-in-out infinite; }
+
+/* Success check draw-in + single ripple. */
+@keyframes check-draw {
+  from { stroke-dashoffset: 48; }
+  to { stroke-dashoffset: 0; }
+}
+.check-draw { stroke-dasharray: 48; animation: check-draw 320ms var(--ease-standard) forwards; }
+@keyframes success-ripple {
+  0% { transform: scale(0.4); opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.success-ripple { animation: success-ripple 700ms var(--ease-standard) forwards; }
+
+/* ── Existing motion utilities (kept for components not yet migrated) ────── */
 
 @keyframes blood-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
@@ -169,9 +274,8 @@ body { letter-spacing: 0.005em; }
   0%, 100% { box-shadow: 0 0 0 0 rgb(196 18 48 / 0); }
   50% { box-shadow: 0 0 0 12px rgb(196 18 48 / 0.25); }
 }
-/* Highlight a list row the moment a live update lands. */
 @keyframes live-highlight {
-  0% { background-color: var(--color-blood-soft); }
+  0% { background-color: var(--color-blood-tint); }
   100% { background-color: transparent; }
 }
 
@@ -189,7 +293,20 @@ body { letter-spacing: 0.005em; }
   animation: shimmer 1.4s infinite;
 }
 
-/* ── Reduced motion (WCAG 2.3.3) — disable ALL non-essential motion. ───── */
+/* ── Accessibility baseline ──────────────────────────────────────────────── */
+
+/* Visible focus everywhere: 3px blue ring, 2px offset (WCAG 2.4.7 / 2.4.13). */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+::selection { background: var(--color-blood); color: #fff; }
+
+/* Keyboard users: never hide focus. */
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── Reduced motion (WCAG 2.3.3) — opacity-only. ────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, ::before, ::after {
@@ -205,7 +322,21 @@ body { letter-spacing: 0.005em; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
 
-/* ── Leaflet map: brand restyle of markers & clusters. ─────────────────── */
+/* ── Leaflet map: brand restyle of markers, clusters & muted tiles. ─────── */
+/* Muted cream tiles: a flat translucent veil over the tile pane — no CSS
+   filter. Filtering tiles (per-tile or per-pane) made webkit dev-mode paint
+   times blow out and pushed the e2e ticker test past its timeout; a plain
+   alpha overlay gives the same quiet, warm look at one compositing layer. */
+.map-mute-overlay {
+  background: rgb(247 243 238 / 0.30);
+}
+@media (prefers-color-scheme: dark) {
+  .map-mute-overlay {
+    background: rgb(20 10 14 / 0.55);
+  }
+}
+.leaflet-container { font-family: var(--font-sans); }
+
 /* Markers are rendered via L.divIcon HTML; these classes live on the
    injected elements inside the map pane (outside React, so plain CSS). */
 .bloodradar-div-icon { background: transparent; border: none; }
@@ -213,6 +344,37 @@ body { letter-spacing: 0.005em; }
 .bloodradar-marker-selected {
   transform: scale(1.25);
   box-shadow: 0 0 0 5px rgba(196, 18, 48, 0.25) !important;
+}
+
+/* ── Horizontal strips (live requests) — no visible scrollbar, snap feel. ── */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Wine band (trust section) — dark in BOTH colour schemes. ───────────── */
+.wine-band {
+  background: var(--color-wine);
+  color: #F2EDEA;
+}
+.wine-band .wine-card {
+  background: rgb(242 237 234 / 0.05);
+  border: 1px solid rgb(242 237 234 / 0.14);
+}
+.wine-band .wine-muted { color: rgb(242 237 234 / 0.68); }
+.wine-band .wine-link { color: #F2EDEA; }
+.wine-band .wine-link:hover { text-decoration-color: var(--color-blood); }
+
+/* ── Mobile sticky bottom bar ───────────────────────────────────────────── */
+/* When the hero has scrolled away, the AI assistant FAB must lift above the
+   bottom bar (FAB lives in AIChatbot: fixed bottom-6 right-6). The class is
+   toggled on <body> by an IntersectionObserver in App. */
+body.bottom-bar-visible #btn-toggle-ai-chat {
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+}
+@media (min-width: 768px) {
+  body.bottom-bar-visible #btn-toggle-ai-chat { bottom: 1.5rem; }
 }
 
 /* Cluster circles follow the brand (the plugin's default green is replaced).

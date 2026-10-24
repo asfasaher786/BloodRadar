@@ -3,20 +3,19 @@ import { Hospital } from "../types";
 import { API_BASE } from "../lib/api";
 import {
   AlertCircle, Heart, Users, BellRing, CheckCircle2, PhoneCall,
-  RefreshCw, XCircle, Eye, Zap, Minus, Plus, Siren, Phone, Check
+  XCircle, Eye, Zap, Minus, Plus, Siren, Phone, Check,
+  ChevronDown, Search, MessageCircle, HelpCircle, Building2
 } from "lucide-react";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
 import Card from "./ui/Card";
-import Input from "./ui/Input";
-import Select from "./ui/Select";
 import Button from "./ui/Button";
+import Select from "./ui/Select";
 import Badge from "./ui/Badge";
 import TopMatches from "./TopMatches";
 
 interface SOSRequestFormProps {
   hospitals: Hospital[];
   onSuccess: () => void;
-  lang: 'en' | 'ur';
 }
 
 interface MySos {
@@ -42,9 +41,12 @@ const HOTLINES = [
   { name: "Shifa International", number: "+92 51 8463000" },
 ];
 
-export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSRequestFormProps) {
-  const en = (e: string, u: string) => (lang === 'en' ? e : u);
+/** Strip non-digits; keep an optional leading 92 country code. */
+function phoneDigits(p: string): string {
+  return p.replace(/[^\d]/g, "");
+}
 
+export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormProps) {
   const [emergencyMode, setEmergencyMode] = useState(true);
   const [patientName, setPatientName] = useState("");
   const [bloodGroup, setBloodGroup] = useState<string>("O-");
@@ -56,6 +58,18 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
   const [city, setCity] = useState<string>(DEFAULT_CITY);
   const [submitPhase, setSubmitPhase] = useState<'idle' | 'loading' | 'success'>('idle');
   const [error, setError] = useState("");
+
+  // Hospital combobox state.
+  const [hospitalQuery, setHospitalQuery] = useState("");
+  const [hospitalOpen, setHospitalOpen] = useState(false);
+  const hospitalListRef = useRef<HTMLDivElement>(null);
+
+  // Field-level validation (validate on blur, re-checked on submit).
+  const [phoneError, setPhoneError] = useState("");
+  const [groupError, setGroupError] = useState("");
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const groupChipsRef = useRef<HTMLFieldSetElement>(null);
 
   // Requester-side tracking of their live SOS (anonymous — proven by the
   // one-time code the server issued). Survives page refresh via localStorage.
@@ -137,6 +151,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
     setMySos(null);
     setNotifiedCount(null);
     setPanelMsg("");
+    setSubmitPhase('idle');
     localStorage.removeItem(SOS_STORAGE_KEY);
     stopPolling();
   };
@@ -149,12 +164,24 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
       `Please share/donate if you can. Every minute counts. 🙏`;
   };
 
+  const validatePhone = (value: string): string => {
+    const digits = phoneDigits(value);
+    if (!value.trim()) return "Please add your mobile number — we need it to connect donors to you.";
+    if (digits.length < 7) return "That number looks too short. Add the full mobile number.";
+    if (digits.length > 15) return "That number looks too long. Double-check it.";
+    return "";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contactPhone.trim()) {
-      setError(en("Please provide a contact phone number — it's the only required field.", "براہ کرم رابطہ نمبر درج کریں۔"));
-      return;
-    }
+    // Validate all required fields; focus the first error.
+    const pErr = validatePhone(contactPhone);
+    const gErr = bloodGroup === "" ? "Please pick the blood group from your lab report — or ask the ward. O- and O+ are the most common." : "";
+    setPhoneError(pErr);
+    setGroupError(gErr);
+    if (pErr) { phoneRef.current?.focus(); return; }
+    if (gErr) { groupChipsRef.current?.focus(); return; }
+
     setError("");
     setSubmitPhase('loading');
 
@@ -166,7 +193,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
           patientName: emergencyMode ? "" : patientName,
           bloodGroup,
           unitsNeeded,
-          hospitalId: emergencyMode ? "" : hospitalId,
+          hospitalId,
           contactPhone,
           reason: emergencyMode ? "" : reason,
           urgency: emergencyMode ? "Immediate (SOS)" : urgency,
@@ -178,9 +205,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
         const d = await response.json();
         // Abuse controls (Phase 3): the backend answers 200 + duplicate:true
         // when this phone already has an open request for the same blood
-        // group — a double-tap must not broadcast the same SOS twice. Show
-        // the open request instead; reuse the locally stored requester code
-        // (it belongs to this phone + need).
+        // group — a double-tap must not broadcast the same SOS twice.
         if (d.duplicate) {
           let restored: MySos | null = null;
           try {
@@ -194,12 +219,8 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
           setReveal({ status: 'waiting' });
           setMatchingCount(d.request?.matchingDonorsCount ?? 0);
           setNotifiedCount(null);
-          setPanelMsg(en(
-            "We found your open request for this need — nothing was double-posted.",
-            "اس ضرورت کے لیے آپ کی کھلی درخواست مل گئی — کچھ دوبارہ پوسٹ نہیں ہوا۔"
-          ));
-          setContactPhone("");
-          setSubmitPhase('idle');
+          setPanelMsg("We found your open request for this need — nothing was double-posted.");
+          setSubmitPhase('success');
           return;
         }
         const sos: MySos = { id: d.request?.id, code: d.requesterCode, myPhone: contactPhone, request: d.request || null };
@@ -210,12 +231,9 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
         setPanelMsg("");
         localStorage.setItem(SOS_STORAGE_KEY, JSON.stringify(sos));
         setPatientName("");
-        setContactPhone("");
         setReason("");
         setUnitsNeeded(1);
-        // Micro-interaction: spinner → check → live panel takes over.
         setSubmitPhase('success');
-        setTimeout(() => setSubmitPhase('idle'), 900);
         onSuccess();
       } else {
         const d = await response.json();
@@ -223,7 +241,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
         setSubmitPhase('idle');
       }
     } catch {
-      setError("Server connection failed. Please try again.");
+      setError("Couldn't send. Check your connection and retry.");
       setSubmitPhase('idle');
     }
   };
@@ -245,10 +263,10 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
         setNotifiedCount(data.notifiedDonors ?? 0);
         setPanelMsg(data.message || "");
       } else {
-        setPanelMsg(data.error || en("Couldn't notify donors.", "عطیہ دہندگان کو مطلع نہیں کیا جا سکا۔"));
+        setPanelMsg(data.error || "Couldn't notify donors.");
       }
     } catch {
-      setPanelMsg(en("Network error. Try again.", "نیٹ ورک میں خرابی۔ دوبارہ کوشش کریں۔"));
+      setPanelMsg("Network error. Try again.");
     } finally {
       setNotifying(false);
     }
@@ -268,6 +286,7 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
       });
       if (response.ok) {
         setReveal(status === "Fulfilled" ? { status: 'fulfilled' } : { status: 'cancelled' });
+        if (status === "Cancelled") setSubmitPhase('idle');
         // Keep mySos mounted so the confirmation message is visible; only
         // the persisted secret is cleared (the SOS is closed server-side).
         localStorage.removeItem(SOS_STORAGE_KEY);
@@ -275,10 +294,10 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
         onSuccess();
       } else {
         const data = await response.json();
-        setPanelMsg(data.error || en("Couldn't update the request.", "درخواست اپڈیٹ نہیں ہو سکی۔"));
+        setPanelMsg(data.error || "Couldn't update the request.");
       }
     } catch {
-      setPanelMsg(en("Network error. Try again.", "نیٹ ورک میں خرابی۔ دوبارہ کوشش کریں۔"));
+      setPanelMsg("Network error. Try again.");
     } finally {
       setClosing(false);
     }
@@ -286,59 +305,98 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
 
   const shareUrl = mySos ? `https://wa.me/?text=${encodeURIComponent(buildShareMessage(mySos.request, mySos.myPhone))}` : "#";
   const noMatches = matchingCount !== null && matchingCount === 0;
+  const selectedHospital = hospitals.find(h => h.id === hospitalId) || null;
+  const hospitalPhone = selectedHospital?.phone || "";
+  const cityHospitals = hospitals.filter(h => h.city === city);
+  const filteredHospitals = cityHospitals.filter(h =>
+    h.name.toLowerCase().includes(hospitalQuery.toLowerCase())
+  );
+
+  // One-tap SMS fallback when the server is unreachable — the same message
+  // the WhatsApp share would carry, so nothing typed is lost.
+  const smsFallbackUrl = `sms:?&body=${encodeURIComponent(
+    `URGENT — ${bloodGroup || "?"} blood needed, ${unitsNeeded} unit(s), ${city}. Contact: ${contactPhone}. Sent via BloodRadar.`
+  )}`;
 
   return (
     <Card
       id="sos-request-form-card"
       className="sos-card"
       icon={
-        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-blood blood-pulse">
+        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-blood">
           <Siren className="w-5 h-5 text-white" />
         </span>
       }
       title={
         <span className="flex items-center gap-2">
-          {en("Request Blood — SOS", "فوری ہنگامی بلڈ کی درخواست")}
+          Request Blood — SOS
           {mySos && reveal.status === 'waiting' && <Badge tone="blood" mono><span className="w-1.5 h-1.5 rounded-full bg-blood animate-pulse" /> LIVE</Badge>}
         </span>
       }
-      subtitle={en("Only a phone number is required. Everything else can be skipped.", "صرف رابطہ نمبر ضروری ہے، باقی سب اختیاری ہے۔")}
+      subtitle="Three taps, under 30 seconds. We alert compatible donors nearby."
     >
-      {/* Emergency mode toggle — strips the form to the essentials. */}
-      <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-surface border border-border mb-5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Zap className="w-4 h-4 text-warn-ink shrink-0" aria-hidden="true" />
-          <div>
-            <p className="text-xs font-bold text-ink">{en("Emergency mode", "ایمرجنسی موڈ")}</p>
-            <p className="text-[10px] text-muted">
-              {en("Essentials only — broadcast in under 30 seconds", "صرف ضروری خانے — تیس سیکنڈ میں درخواست")}
-            </p>
+      {/* Success state — a full screen, not a toast. */}
+      {submitPhase === 'success' && mySos && reveal.status !== 'cancelled' && (
+        <div role="status" aria-live="polite" className="text-center py-6 fade-in">
+          <div className="relative mx-auto w-20 h-20 mb-5">
+            <span className="absolute inset-0 rounded-full border-2 border-blood/30 success-ripple" aria-hidden="true" />
+            <span className="absolute inset-0 rounded-full flex items-center justify-center" style={{ background: 'var(--blood-tint)' }}>
+              <svg viewBox="0 0 24 24" className="w-9 h-9" aria-hidden="true">
+                <path
+                  className="check-draw"
+                  d="M4 12.5l5 5L20 6.5"
+                  fill="none"
+                  stroke="var(--blood)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+          </div>
+          <p className="font-display font-extrabold text-2xl" style={{ color: 'var(--ink)' }}>Request sent</p>
+          <p className="text-sm mt-2 max-w-sm mx-auto" style={{ color: 'var(--muted)' }}>
+            {noMatches
+              ? "No compatible donors in the registry right now. Share on WhatsApp to reach further, and call a hospital directly — details below."
+              : matchingCount !== null
+                ? `${matchingCount} compatible donors matched nearby — notify them now.`
+                : "Checking for compatible donors…"}
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <a href={shareUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
+              <Button variant="secondary" size="md" icon={<MessageCircle className="w-4 h-4" />}>Share on WhatsApp</Button>
+            </a>
+            {hospitalPhone ? (
+              <a href={`tel:${hospitalPhone}`} className="inline-flex">
+                <Button variant="secondary" size="md" icon={<PhoneCall className="w-4 h-4" />}>Call the hospital</Button>
+              </a>
+            ) : (
+              <span className="inline-flex">
+                <Button variant="secondary" size="md" icon={<Phone className="w-4 h-4" />} onClick={() => document.getElementById("sos-hotlines")?.scrollIntoView({ behavior: "smooth" })}>
+                  Call a hospital
+                </Button>
+              </span>
+            )}
+            <span className="inline-flex">
+              <Button variant="ghost" size="md" icon={<Eye className="w-4 h-4" />} onClick={() => document.getElementById("sos-live-panel")?.scrollIntoView({ behavior: "smooth" })}>
+                Track this request
+              </Button>
+            </span>
           </div>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={emergencyMode}
-          aria-label={en("Toggle emergency mode", "ایمرجنسی موڈ آن/آف")}
-          onClick={() => setEmergencyMode(m => !m)}
-          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-150 ${emergencyMode ? "bg-blood" : "bg-border"}`}
-        >
-          <span
-            aria-hidden="true"
-            className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-1 transition-transform duration-150 ${emergencyMode ? "translate-x-7" : "translate-x-1"}`}
-          />
-        </button>
-      </div>
+      )}
 
-      {/* ── Live requester panel — the confirmation screen ─────────────── */}
+      {/* ── Live requester panel — notify donors, watch status, close loop ── */}
       {mySos && reveal.status !== 'cancelled' && (
         <div
+          id="sos-live-panel"
           role="status"
           aria-live="polite"
-          className="mb-5 p-4 rounded-xl relative bg-blood-soft border border-blood/25 scale-in"
+          className="mb-5 p-4 rounded-xl relative border scale-in"
+          style={{ background: 'var(--blood-tint)', borderColor: 'rgb(196 18 48 / 0.25)' }}
         >
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-blood">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--blood)' }}>
               {reveal.status === 'fulfilled' || reveal.status === 'donor-accepted'
                 ? <CheckCircle2 className="w-5 h-5 text-white" />
                 : <BellRing className="w-5 h-5 text-white animate-pulse" />}
@@ -346,52 +404,51 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
             <div className="flex-1 min-w-0">
               {reveal.status === 'fulfilled' ? (
                 <div>
-                  <p className="text-xs font-bold text-ink">{en("Marked fulfilled — thank you.", "مکمل نشان زد — شکریہ۔")}</p>
-                  <p className="text-[10px] text-muted mt-1">
-                    {en("Your request is closed and the board is up to date.", "آپ کی درخواست بند کر دی گئی ہے۔")}
-                  </p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Marked fulfilled — thank you.</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Your request is closed and the board is up to date.</p>
                   <div className="mt-2">
-                    <Button size="sm" variant="secondary" onClick={clearMySos}>{en("Done", "مکمل")}</Button>
+                    <Button size="sm" variant="secondary" onClick={clearMySos}>Done</Button>
                   </div>
                 </div>
               ) : reveal.status === 'donor-accepted' ? (
                 <div>
-                  <p className="text-xs font-bold text-ink">{en("A donor accepted your request!", "ایک عطیہ دہندہ نے آپ کی درخواست قبول کر لی!")}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>A donor accepted your request!</p>
                   {reveal.donor && (
                     <div className="mt-2 space-y-2">
-                      <div className="p-3 rounded-lg flex items-center justify-between gap-3 bg-safe-soft border border-safe/40">
+                      <div className="p-3 rounded-lg flex items-center justify-between gap-3 border" style={{ background: 'var(--safe-tint)', borderColor: 'rgb(0 196 140 / 0.4)' }}>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-ink">
-                            {reveal.donor.name} <span className="text-blood-ink">({reveal.donor.bloodGroup})</span>
+                          <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>
+                            {reveal.donor.name} <span style={{ color: 'var(--blood-dark)' }}>({reveal.donor.bloodGroup})</span>
                           </p>
-                          <p className="text-[10px] font-mono mt-0.5 text-muted truncate">
+                          <p className="text-xs font-mono mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
                             {reveal.donor.city}
                             {reveal.acceptedAt ? ` · ${new Date(reveal.acceptedAt).toLocaleString()}` : ''}
                           </p>
                         </div>
                         <a
                           href={`tel:${reveal.donor.phone}`}
-                          className="h-11 px-4 rounded-lg text-xs font-bold text-white bg-safe-ink hover:opacity-90 flex items-center gap-1.5 shrink-0 transition-colors duration-150"
+                          className="h-11 px-4 rounded-xl text-sm font-bold text-white flex items-center gap-1.5 shrink-0 transition-colors duration-150 hover:opacity-90"
+                          style={{ background: 'var(--safe-text)' }}
                         >
                           <PhoneCall className="w-4 h-4" />
-                          {en("Call Now", "کال کریں")}
+                          Call Now
                         </a>
                       </div>
-                      <p className="text-[10px] text-muted">
-                        {en("Don't forget to mark the request fulfilled once the blood arrives — it keeps the board honest.", "خون ملتے ہی درخواست مکمل نشان زد کرنا نہ بھولیں۔")}
+                      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                        Don't forget to mark the request fulfilled once the blood arrives — it keeps the board honest.
                       </p>
                     </div>
                   )}
                 </div>
               ) : (
                 <div>
-                  <p className="text-xs font-bold text-ink">{en("Your SOS is live", "آپ کی درخواست لائیو ہے")}</p>
-                  <p className="text-[10px] text-muted mt-1">
+                  <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Your SOS is live</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
                     {noMatches
-                      ? en("No compatible donors in the registry right now. Share on WhatsApp to reach further, and call a hospital directly — details below.", "ابھی رجسٹری میں موزوں عطیہ دہندہ نہیں۔ واٹس ایپ پر شیئر کریں یا ہسپتال سے براہ راست رابطہ کریں۔")
+                      ? "No compatible donors in the registry right now. Share on WhatsApp to reach further, and call a hospital directly — details below."
                       : matchingCount !== null
-                        ? en(`${matchingCount} compatible donor${matchingCount === 1 ? "" : "s"} matched — notify them now.`, `${matchingCount} موزوں عطیہ دہندگان ملے۔`)
-                        : en("Checking for compatible donors…", "عطیہ دہندگان تلاش کیے جا رہے ہیں…")}
+                        ? `${matchingCount} donors matched — notify them now.`
+                        : "Checking for compatible donors…"}
                   </p>
                 </div>
               )}
@@ -402,48 +459,46 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
           {reveal.status === 'waiting' && (
             <div className="mt-3 space-y-2">
               {notifiedCount !== null && (
-                <p className="text-[10px] flex items-center gap-1 text-muted">
+                <p className="text-xs flex items-center gap-1" style={{ color: 'var(--muted)' }}>
                   <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {notifiedCount > 0
-                    ? en(`${notifiedCount} compatible donors notified`, `${notifiedCount} عطیہ دہندگان کو مطلع کیا گیا`)
-                    : en("No available donors were notified right now — we keep retrying with new signups", "ابھی کوئی موزوں عطیہ دہندہ دستیاب نہیں")}
+                    ? `${notifiedCount} compatible donors notified`
+                    : "No available donors were notified right now — we keep retrying with new signups"}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="primary" onClick={handleNotifyDonors} loading={notifying} icon={<BellRing className="w-4 h-4" />}>
-                  {en("Notify Matching Donors", "عطیہ دہندگان کو مطلع کریں")}
+                  Notify Matching Donors
                 </Button>
                 <a href={shareUrl} target="_blank" rel="noopener noreferrer">
                   <Button size="sm" variant="secondary" icon={<Users className="w-4 h-4" />}>WhatsApp</Button>
                 </a>
                 <Button size="sm" variant="ghost" onClick={() => handleCloseSos("Fulfilled")} loading={closing} icon={<Check className="w-4 h-4" />}>
-                  {en("Mark as Fulfilled", "مکمل ہو گئی")}
+                  Mark as Fulfilled
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => handleCloseSos("Cancelled")} loading={closing} icon={<XCircle className="w-4 h-4" />}>
-                  {en("Cancel SOS", "منسوخ کریں")}
+                  Cancel SOS
                 </Button>
               </div>
-              <p className="text-[10px] text-muted">
-                {en("We check every 15 seconds and show the donor's number here the moment someone accepts.", "ہم ہر 15 سیکنڈ بعد چیک کرتے ہیں — نمبر قبول ہوتے ہی یہاں دکھائی دے گا۔")}
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                We check every 15 seconds and show the donor's number here the moment someone accepts.
               </p>
               {/* Transparent ranking: who's nearby, and exactly why. */}
-              <TopMatches sosId={mySos.id} lang={lang} />
+              <TopMatches sosId={mySos.id} />
               {/* Honest fallback when the registry has nobody compatible. */}
-              {noMatches && (
-                <div className="p-3 rounded-lg bg-warn-soft border border-warn/40" role="note">
-                  <p className="text-[10px] font-bold text-warn-ink flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 shrink-0" />
-                    {en("Also call the hospital directly:", "ہسپتال سے براہ راست بھی رابطہ کریں:")}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                    {HOTLINES.map(h => (
-                      <a key={h.name} href={`tel:${h.number}`} className="text-[10px] font-semibold text-blood-ink underline underline-offset-2">
-                        {h.name} · {h.number}
-                      </a>
-                    ))}
-                  </div>
+              <div id="sos-hotlines" className="p-3 rounded-lg border" style={{ background: 'var(--warn-tint)', borderColor: 'rgb(255 179 0 / 0.4)' }} role="note">
+                <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: 'var(--warn-text)' }}>
+                  <Phone className="w-3.5 h-3.5 shrink-0" />
+                  Also call the hospital directly:
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                  {HOTLINES.map(h => (
+                    <a key={h.name} href={`tel:${h.number}`} className="text-xs font-semibold underline underline-offset-2" style={{ color: 'var(--blood-dark)' }}>
+                      {h.name} · {h.number}
+                    </a>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -454,140 +509,281 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
                 <Button size="sm" variant="secondary" icon={<Users className="w-4 h-4" />}>WhatsApp</Button>
               </a>
               <Button size="sm" variant="success" onClick={() => handleCloseSos("Fulfilled")} loading={closing} icon={<Check className="w-4 h-4" />}>
-                {en("Mark as Fulfilled", "مکمل ہو گئی")}
+                Mark as Fulfilled
               </Button>
               <Button size="sm" variant="ghost" onClick={() => handleCloseSos("Cancelled")} loading={closing} icon={<XCircle className="w-4 h-4" />}>
-                {en("Cancel SOS", "منسوخ کریں")}
+                Cancel SOS
               </Button>
             </div>
           )}
-          {panelMsg && <p className="text-[10px] mt-2 text-blood-ink">{panelMsg}</p>}
+          {panelMsg && <p className="text-xs mt-2" style={{ color: 'var(--blood-dark)' }}>{panelMsg}</p>}
         </div>
       )}
 
       {/* Cancelled → offer a fresh start */}
       {mySos && reveal.status === 'cancelled' && (
-        <div role="status" className="mb-5 p-4 rounded-xl bg-surface border border-border flex items-center gap-2.5">
-          <XCircle className="w-4 h-4 text-muted shrink-0" />
-          <p className="text-xs text-muted flex-1">{en("Request cancelled. You can raise a new SOS below.", "درخواست منسوخ کر دی گئی۔ نیچے نئی درخواست دیں۔")}</p>
-          <Button size="sm" variant="ghost" onClick={clearMySos}>{en("New request", "نئی درخواست")}</Button>
+        <div role="status" className="mb-5 p-4 rounded-xl border flex items-center gap-2.5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <XCircle className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} />
+          <p className="text-sm flex-1" style={{ color: 'var(--muted)' }}>Request cancelled. You can raise a new SOS below.</p>
+          <Button size="sm" variant="ghost" onClick={clearMySos}>New request</Button>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 text-sm" noValidate={false}>
+      {submitPhase !== 'success' && (
+      <form onSubmit={handleSubmit} className="space-y-5 text-sm">
         {error && (
-          <div className="p-3 rounded-xl flex items-center gap-2 text-xs bg-blood-soft border border-blood/25 text-blood-ink" role="alert">
+          <div className="p-3 rounded-xl flex items-center gap-2 text-sm border" role="alert" style={{ background: 'var(--blood-tint)', borderColor: 'rgb(196 18 48 / 0.25)', color: 'var(--danger-text)' }}>
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
+            <a href={smsFallbackUrl} className="font-semibold underline underline-offset-2 whitespace-nowrap">
+              Send by SMS instead
+            </a>
           </div>
         )}
 
-        {/* 1. Phone first — the only required field. */}
-        <Input
-          id="input-sos-phone"
-          type="tel"
-          label={en("Contact mobile number", "رابطہ نمبر")}
-          placeholder="e.g. 0300 1234567"
-          value={contactPhone}
-          onChange={(e) => setContactPhone(e.target.value)}
-          autoFocus
-          autoComplete="tel"
-          inputMode="tel"
-          hint={en("Your number stays private — donors only see it after they accept your request.", "آپ کا نمبر نجی رہتا ہے۔")}
-        />
+        {/* Emergency mode — strips the form to the essentials. */}
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Zap className="w-4 h-4 shrink-0" style={{ color: 'var(--warn-text)' }} aria-hidden="true" />
+            <div>
+              <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Emergency mode</p>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>Essentials only — broadcast in under 30 seconds</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={emergencyMode}
+            aria-label="Toggle emergency mode"
+            onClick={() => setEmergencyMode(m => !m)}
+            className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-150 ${emergencyMode ? "bg-blood" : "bg-border"}`}
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-1 transition-transform duration-150 ${emergencyMode ? "translate-x-7" : "translate-x-1"}`}
+            />
+          </button>
+        </div>
 
-        {/* 2. Blood group — large tappable chips, not a dropdown. */}
-        <fieldset>
-          <legend className="block font-semibold mb-1.5 text-xs text-ink">
-            {en("Blood group needed", "خون کا گروپ")}
+        {/* 1. Blood group — large tappable chips, 56px. */}
+        <fieldset ref={groupChipsRef} tabIndex={-1}>
+          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+            Blood group needed <span aria-hidden="true" style={{ color: 'var(--blood)' }}>*</span>
           </legend>
-          <div className="grid grid-cols-4 gap-2" role="group" aria-label={en("Blood group", "خون کا گروپ")}>
+          <div className="grid grid-cols-4 gap-2" role="group" aria-label="Blood group">
             {BLOOD_GROUPS.map(g => (
               <button
                 key={g}
                 type="button"
                 id={`chip-blood-${g}`}
                 aria-pressed={bloodGroup === g}
-                onClick={() => setBloodGroup(g)}
-                className={`h-14 rounded-xl border-2 font-display font-extrabold text-base transition-all duration-150 flex flex-col items-center justify-center gap-0.5
+                onClick={() => { setBloodGroup(g); setGroupError(""); }}
+                className={`h-14 rounded-xl border-2 font-display font-extrabold text-base transition-all duration-150 flex items-center justify-center gap-1
                   ${bloodGroup === g
-                    ? "bg-blood border-blood text-white shadow-1 scale-[1.02]"
-                    : "bg-surface border-border text-ink hover:border-blood/50"}`}
+                    ? "bg-blood border-blood text-white shadow-1"
+                    : "bg-card border-border text-ink hover:border-blood/50"}`}
               >
                 {g}
-                {g === "O-" && (
-                  <span className={`text-[8px] font-sans font-semibold ${bloodGroup === g ? "text-white/90" : "text-muted"}`}>
-                    {en("Universal", "یونیورسل")}
-                  </span>
-                )}
+                {bloodGroup === g && <Check className="w-4 h-4" aria-hidden="true" />}
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            id="chip-blood-not-sure"
+            aria-pressed={bloodGroup === ""}
+            onClick={() => { setBloodGroup(""); setGroupError(""); }}
+            className={`mt-2 w-full h-12 rounded-xl border-2 border-dashed text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-150
+              ${bloodGroup === "" ? "bg-blood-tint border-blood text-blood-dark" : "bg-card border-border text-muted hover:border-blood/40"}`}
+          >
+            <HelpCircle className="w-4 h-4" aria-hidden="true" />
+            Not sure
+          </button>
+          {groupError && (
+            <p id="sos-group-error" role="alert" className="mt-1.5 text-xs flex items-center gap-1.5" style={{ color: 'var(--danger-text)' }}>
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> {groupError}
+            </p>
+          )}
         </fieldset>
 
-        {/* 3. Units + city */}
-        <div className="grid grid-cols-2 gap-4">
-          <fieldset>
-            <legend className="block font-semibold mb-1.5 text-xs text-ink">{en("Units", "بیگز")}</legend>
-            <div className="flex items-center gap-1 h-14 rounded-xl border border-border bg-surface px-1.5">
-              <button
-                type="button"
-                id="btn-sos-units-minus"
-                aria-label={en("Fewer units", "کم بیگز")}
-                onClick={() => setUnitsNeeded(u => Math.max(1, u - 1))}
-                className="w-11 h-11 rounded-lg flex items-center justify-center text-ink hover:bg-surface-2 transition-colors duration-150"
-              >
-                <Minus className="w-4 h-4" />
-              </button>
-              <span id="sos-units-value" className="flex-1 text-center font-display font-bold text-lg text-ink" aria-live="polite">{unitsNeeded}</span>
-              <button
-                type="button"
-                id="btn-sos-units-plus"
-                aria-label={en("More units", "زیادہ بیگز")}
-                onClick={() => setUnitsNeeded(u => Math.min(10, u + 1))}
-                className="w-11 h-11 rounded-lg flex items-center justify-center text-ink hover:bg-surface-2 transition-colors duration-150"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-          </fieldset>
-
-          <div className="grid grid-cols-1 gap-2">
-            <label className="block font-semibold mb-1.5 text-xs text-ink">{en("City", "شہر")}</label>
-            <div className="flex flex-col gap-1.5">
-              {SUPPORTED_CITIES.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  id={`chip-city-${c.toLowerCase()}`}
-                  aria-pressed={city === c}
-                  onClick={() => setCity(c)}
-                  className={`h-[26px] rounded-lg border text-xs font-bold transition-colors duration-150
-                    ${city === c ? "bg-ink text-white border-ink" : "bg-surface text-muted border-border hover:border-ink/40"}`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+        {/* 2. Phone — prefilled +92, the only truly required field. */}
+        <div>
+          <label htmlFor="input-sos-phone" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+            Your mobile number <span aria-hidden="true" style={{ color: 'var(--blood)' }}>*</span>
+          </label>
+          <div className={`flex items-stretch h-12 rounded-xl border bg-card overflow-hidden transition-colors duration-150 focus-within:ring-2 focus-within:ring-blood/15 ${phoneError ? "border-blood" : "border-border-strong focus-within:border-blood"}`}>
+            <span className="flex items-center px-3 font-mono text-sm font-bold border-r" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}>+92</span>
+            <input
+              ref={phoneRef}
+              id="input-sos-phone"
+              type="tel"
+              placeholder="300 1234567"
+              value={contactPhone}
+              onChange={(e) => { setContactPhone(e.target.value); if (phoneError) setPhoneError(""); }}
+              onBlur={() => setPhoneError(validatePhone(contactPhone))}
+              autoComplete="tel"
+              inputMode="tel"
+              aria-invalid={phoneError ? true : undefined}
+              aria-describedby={phoneError ? "sos-phone-error" : "sos-phone-hint"}
+              className="flex-1 min-w-0 px-3 bg-transparent text-sm outline-none placeholder:text-muted"
+            />
           </div>
+          {phoneError ? (
+            <p id="sos-phone-error" role="alert" className="mt-1.5 text-xs flex items-center gap-1.5" style={{ color: 'var(--danger-text)' }}>
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> {phoneError}
+            </p>
+          ) : (
+            <p id="sos-phone-hint" className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>
+              Your number stays private — donors only see it after they accept your request.
+            </p>
+          )}
         </div>
 
-        {/* 4. Optional details — hidden in emergency mode. */}
-        {!emergencyMode && (
-          <div className="space-y-4 fade-in">
-            <Input
-              id="input-sos-patient-name"
-              label={en("Patient name", "مریض کا نام")}
-              optional
-              placeholder="e.g. Muhammad Zubair"
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
+        {/* 3. Hospital — searchable, "Not sure" allowed. */}
+        <fieldset>
+          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+            Hospital <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
+          </legend>
+          <div className="flex gap-2 mb-2">
+            {SUPPORTED_CITIES.map(c => (
+              <button
+                key={c}
+                type="button"
+                id={`chip-city-${c.toLowerCase()}`}
+                aria-pressed={city === c}
+                onClick={() => setCity(c)}
+                className={`h-10 px-4 rounded-lg border text-sm font-bold transition-colors duration-150
+                  ${city === c ? "bg-ink text-white border-ink" : "bg-card text-muted border-border hover:border-ink/40"}`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <div className="relative" ref={hospitalListRef}>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+            <input
+              id="input-sos-hospital-search"
+              role="combobox"
+              aria-expanded={hospitalOpen}
+              aria-controls="listbox-sos-hospital"
+              aria-autocomplete="list"
+              autoComplete="off"
+              type="text"
+              placeholder={selectedHospital ? selectedHospital.name : "Search hospitals… or skip"}
+              value={selectedHospital && !hospitalOpen ? selectedHospital.name : hospitalQuery}
+              onChange={(e) => { setHospitalQuery(e.target.value); setHospitalOpen(true); }}
+              onFocus={() => setHospitalOpen(true)}
+              onKeyDown={(e) => { if (e.key === "Escape") setHospitalOpen(false); }}
+              className="w-full h-12 pl-9 pr-3 rounded-xl bg-card border text-sm outline-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood border-border-strong placeholder:text-muted"
             />
+            {hospitalOpen && (
+              <ul
+                id="listbox-sos-hospital"
+                role="listbox"
+                aria-label="Hospitals"
+                className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border bg-card shadow-3"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <li
+                  role="option"
+                  id="option-hospital-not-sure"
+                  aria-selected={hospitalId === ""}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setHospitalId(""); setHospitalQuery(""); setHospitalOpen(false); }}
+                  className="flex items-center gap-2 px-3 py-2.5 text-sm font-semibold cursor-pointer hover:bg-surface-2 transition-colors"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  <HelpCircle className="w-4 h-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+                  Not sure — skip this step
+                </li>
+                {filteredHospitals.map(h => (
+                  <li
+                    key={h.id}
+                    role="option"
+                    id={`option-hospital-${h.id}`}
+                    aria-selected={hospitalId === h.id}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setHospitalId(h.id); setHospitalQuery(h.name); setHospitalOpen(false); }}
+                    className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm cursor-pointer hover:bg-surface-2 transition-colors"
+                    style={{ color: 'var(--ink)' }}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Building2 className="w-4 h-4 shrink-0" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+                      <span className="truncate">{h.name}</span>
+                    </span>
+                    {hospitalId === h.id && <Check className="w-4 h-4 shrink-0" style={{ color: 'var(--blood)' }} aria-hidden="true" />}
+                  </li>
+                ))}
+                {filteredHospitals.length === 0 && (
+                  <li className="px-3 py-2.5 text-sm" style={{ color: 'var(--muted)' }}>No hospitals match — you can skip this step.</li>
+                )}
+              </ul>
+            )}
+          </div>
+          <p className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>Optional — donors can match on blood group and city alone.</p>
+        </fieldset>
 
-            <div className="grid grid-cols-2 gap-4">
+        {/* Units — always visible, compact. */}
+        <fieldset>
+          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>Units</legend>
+          <div className="flex items-center gap-1 h-14 rounded-xl border bg-card px-1.5" style={{ borderColor: 'var(--border)' }}>
+            <button
+              type="button"
+              id="btn-sos-units-minus"
+              aria-label="Fewer units"
+              onClick={() => setUnitsNeeded(u => Math.max(1, u - 1))}
+              className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
+              style={{ color: 'var(--ink)' }}
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <span id="sos-units-value" className="flex-1 text-center font-display font-bold text-lg" style={{ color: 'var(--ink)' }} aria-live="polite">{unitsNeeded}</span>
+            <button
+              type="button"
+              id="btn-sos-units-plus"
+              aria-label="More units"
+              onClick={() => setUnitsNeeded(u => Math.min(10, u + 1))}
+              className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
+              style={{ color: 'var(--ink)' }}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </fieldset>
+
+        {/* More details — collapsed by default in emergency mode. */}
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+          <button
+            type="button"
+            id="btn-toggle-more-details"
+            aria-expanded={!emergencyMode || showMoreDetails}
+            onClick={() => setShowMoreDetails(s => !s)}
+            className="w-full flex items-center justify-between px-4 py-3 transition-colors duration-150 hover:bg-surface-2"
+            style={{ background: 'var(--surface-2)' }}
+          >
+            <span className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+              More details <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
+            </span>
+            <ChevronDown className={`w-4 h-4 transition-transform duration-150 ${!emergencyMode || showMoreDetails ? "rotate-180" : ""}`} style={{ color: 'var(--muted)' }} aria-hidden="true" />
+          </button>
+          {(!emergencyMode || showMoreDetails) && (
+            <div className="p-4 space-y-4 border-t fade-in" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <label htmlFor="input-sos-patient-name" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+                  Patient name <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
+                </label>
+                <input
+                  id="input-sos-patient-name"
+                  type="text"
+                  placeholder="e.g. Muhammad Zubair"
+                  value={patientName}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  className="w-full h-12 px-3.5 rounded-xl bg-card border border-border-strong text-sm outline-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood placeholder:text-muted"
+                />
+              </div>
               <Select
                 id="select-sos-urgency"
-                label={en("Urgency", "شدت")}
+                label="Urgency"
                 value={urgency}
                 onChange={(e) => setUrgency(e.target.value as any)}
               >
@@ -595,37 +791,22 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
                 <option value="Urgent">Urgent</option>
                 <option value="Routine">Routine</option>
               </Select>
-
-              <Select
-                id="select-sos-hospital"
-                label={en("Target hospital", "ہسپتال کا انتخاب")}
-                optional
-                value={hospitalId}
-                onChange={(e) => setHospitalId(e.target.value)}
-              >
-                <option value="">{en("Nearest hospital", "قریب ترین ہسپتال")}</option>
-                {hospitals.filter(h => h.city === city).map(h => (
-                  <option key={h.id} value={h.id}>{h.name}</option>
-                ))}
-              </Select>
+              <div>
+                <label htmlFor="input-sos-reason" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+                  Reason / diagnosis details <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
+                </label>
+                <textarea
+                  id="input-sos-reason"
+                  rows={2}
+                  placeholder="e.g. Major surgery scheduled tomorrow morning"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-border-strong text-sm resize-none outline-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood placeholder:text-muted"
+                />
+              </div>
             </div>
-
-            <div>
-              <label htmlFor="input-sos-reason" className="block font-semibold mb-1.5 text-xs text-ink">
-                {en("Reason / diagnosis details", "علاج / تشخیص کی تفصیل")}
-                <span className="ml-1 font-normal text-muted">(optional)</span>
-              </label>
-              <textarea
-                id="input-sos-reason"
-                rows={2}
-                placeholder={en("e.g. Major surgery scheduled tomorrow morning", "مثلاً کل صبح بڑا آپریشن ہے")}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-border-strong text-sm text-ink placeholder:text-muted/70 resize-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood outline-none"
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <Button
           id="btn-submit-sos-request"
@@ -633,19 +814,13 @@ export default function SOSRequestForm({ hospitals, onSuccess, lang }: SOSReques
           size="lg"
           fullWidth
           loading={submitPhase === 'loading'}
-          icon={submitPhase === 'success' ? <Check className="w-5 h-5" /> : <Heart className="w-5 h-5" />}
+          icon={<Heart className="w-5 h-5" />}
           className="tracking-wide"
         >
-          {submitPhase === 'success'
-            ? en("SOS Broadcast", "SOS بھیج دی گئی")
-            : en("Broadcast SOS Alert", "ایس او ایس الرٹ نشر کریں")}
+          {submitPhase === 'loading' ? "Sending…" : "Send request"}
         </Button>
-        {emergencyMode && (
-          <p className="text-center text-[10px] text-muted">
-            {en("Emergency mode: only essentials are sent. Matched donors are notified instantly.", "ایمرجنسی موڈ: صرف ضروری معلومات بھیجی جاتی ہیں۔")}
-          </p>
-        )}
       </form>
+      )}
     </Card>
   );
 }

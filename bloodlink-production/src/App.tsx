@@ -5,8 +5,9 @@ import brandIcon from "./assets/brand-icon.png";
 import { motion, useReducedMotion } from "motion/react";
 import {
   Heart, Droplets, Building2, Calendar, MapPin,
-  Bell, Users, AlertTriangle, Phone, Sparkles, WifiOff,
-  Activity, Zap, ChevronRight, X, Menu, TrendingUp, CheckCircle2, Lock, Info
+  Bell, Users, Phone, WifiOff,
+  X, Menu, TrendingUp, Sparkles, CheckCircle2, Lock, Info,
+  Clock, Siren, ChevronRight
 } from "lucide-react";
 
 import SOSRequestForm from "./components/SOSRequestForm";
@@ -21,6 +22,8 @@ import PageSkeleton from "./components/PageSkeleton";
 import AnimatedNumber from "./components/ui/AnimatedNumber";
 import Skeleton, { SkeletonStats } from "./components/ui/Skeleton";
 import SosReportButton from "./components/SosReportButton";
+import HowItWorks from "./components/HowItWorks";
+import { BecomeDonorBand, TrustBand } from "./components/HomeBands";
 
 // Code-split the heaviest widgets (Leaflet map bundle, charts, ML panel,
 // chatbot) so the first paint ships a small shell — each lazy chunk only
@@ -31,7 +34,8 @@ const StatsDashboard = lazy(() => import("./components/StatsDashboard"));
 const RealMLPanel = lazy(() => import("./components/RealMLPanel"));
 
 // Suspense fallback that mirrors the real map card's chrome (header bar +
-// 420px map area) so the layout doesn't jump when the Leaflet chunk arrives.
+// responsive map area) so the layout doesn't jump when the Leaflet chunk
+// arrives.
 function MapCardSkeleton() {
   return (
     <div className="bg-[var(--card)] rounded-2xl border border-[var(--border)] overflow-hidden relative shadow-sm" role="status" aria-label="Loading live blood map">
@@ -45,7 +49,7 @@ function MapCardSkeleton() {
           <Skeleton className="h-8 w-20 rounded-lg" />
         </div>
       </div>
-      <Skeleton className="w-full rounded-none" style={{ height: "420px" }} />
+      <Skeleton className="w-full aspect-[4/5] sm:aspect-[16/10] rounded-none" />
     </div>
   );
 }
@@ -58,9 +62,31 @@ function formatReviewedDate(iso: string): string {
   return `${Number(d)} ${month} ${y}`;
 }
 
+// Relative "time ago" for the live-requests strip — computed from the real
+// createdAt timestamp on each SOS, never a fake "just posted" label.
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const minutes = Math.floor(Math.max(0, Date.now() - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// Header navigation. "Donate" switches the donor module to its register tab
+// before scrolling — every nav item lands somewhere real.
+const NAV_LINKS = [
+  { label: "Find donors", target: "donor-search", donorTab: "search" as const },
+  { label: "Live map", target: "map", donorTab: null },
+  { label: "Blood banks", target: "blood-banks", donorTab: null },
+  { label: "Donate", target: "donor-search", donorTab: "register" as const },
+  { label: "Help", target: "help", donorTab: null },
+];
+
 export default function App() {
   const reduceMotion = useReducedMotion();
-  const [lang] = useState<'en'>('en'); // English-only for now — see README
   const [activeTab, setActiveTab] = useState<'hospitals' | 'camps' | 'analytics' | 'ml-playground'>('hospitals');
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [camps, setCamps] = useState<BloodCamp[]>([]);
@@ -77,6 +103,13 @@ export default function App() {
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [highlightedSosIds, setHighlightedSosIds] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+  // Secondary /insights view (analytics + ML lab) — a hash-routed page so the
+  // main emergency flow stays clean. Deep links work on first load too.
+  const [view, setView] = useState<'home' | 'insights'>(() =>
+    typeof window !== "undefined" && window.location.hash === "#insights" ? "insights" : "home"
+  );
+  // Mobile sticky bottom bar appears once the hero scrolls out of view.
+  const [bottomBarVisible, setBottomBarVisible] = useState(false);
   const alertRef = useRef<HTMLDivElement>(null);
   // Snapshot of id→status from the last successful load, so a live update
   // (SSE → loadData) can flash only the cards that actually changed.
@@ -162,7 +195,58 @@ export default function App() {
     };
   }, []);
 
-  const handleSOSSuccess = () => { loadData(); document.getElementById("emergencies-board")?.scrollIntoView({ behavior: 'smooth' }); };
+  // Hash routing: #insights opens the secondary analytics view; any other
+  // hash returns to home. Native hash navigation handles the scrolling.
+  useEffect(() => {
+    const onHash = () => {
+      if (window.location.hash === "#insights") {
+        setView("insights");
+        window.scrollTo(0, 0);
+      } else {
+        setView("home");
+      }
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // After switching back to home (e.g. clicking a nav link while in the
+  // insights view), the target section only exists post-render — scroll to
+  // it once React has committed.
+  useEffect(() => {
+    if (view !== "home") return;
+    const hash = window.location.hash;
+    if (hash && hash !== "#top" && hash !== "#insights") {
+      const el = document.getElementById(hash.slice(1));
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [view]);
+
+  // Mobile sticky bottom bar: IntersectionObserver on the hero. The hero only
+  // exists after data loads, so the observer re-attaches when that flips.
+  useEffect(() => {
+    if (loading) return;
+    const hero = document.getElementById("top");
+    if (!hero || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      (entries) => setBottomBarVisible(!entries[0].isIntersecting),
+      { rootMargin: "0px 0px -75% 0px" }
+    );
+    obs.observe(hero);
+    return () => obs.disconnect();
+  }, [loading]);
+
+  // The AI assistant FAB lifts above the bar via a body class (see index.css).
+  useEffect(() => {
+    document.body.classList.toggle("bottom-bar-visible", bottomBarVisible);
+    return () => document.body.classList.remove("bottom-bar-visible");
+  }, [bottomBarVisible]);
+
+  const scrollToId = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSOSSuccess = () => { loadData(); scrollToId("emergencies-board"); };
   const handleCampRegistration = async (campId: string) => {
     await fetch(`${API_BASE}/api/camps/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campId }) });
     loadData();
@@ -178,12 +262,23 @@ export default function App() {
   const handleAIEmergencyTrigger = () => {
     setFlashSOS(true);
     setTimeout(() => setFlashSOS(false), 6000);
-    document.getElementById("sos-form")?.scrollIntoView({ behavior: 'smooth' });
+    // The SOS form only exists on the home view — leave the insights page
+    // first so the ring-and-scroll actually lands somewhere visible.
+    if (window.location.hash === "#insights") window.location.hash = "#sos-form";
+    else scrollToId("sos-form");
   };
   const readAllNotifications = async () => {
     await fetch(`${API_BASE}/api/notifications/read-all`, { method: "POST" });
     setDismissedAlert(true);
     loadData();
+  };
+  // Nav handler: links use native hash navigation (real URLs, back-button
+  // friendly). This only switches the donor module tab when the destination
+  // is "Find donors" (search) or "Donate" (register), and re-scrolls if the
+  // hash didn't actually change (repeat click on the same section).
+  const goToNav = (donorTab: 'search' | 'register' | null, target: string) => {
+    if (donorTab) setActiveDonorTab(donorTab);
+    if (window.location.hash === `#${target}`) scrollToId(target);
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -191,11 +286,24 @@ export default function App() {
   const activeAlert = notifications.find(n => n.type === 'emergency' && !n.read);
 
   const TABS = [
-    { id: 'hospitals', label: lang === 'en' ? 'Hospitals' : 'ہسپتال', icon: Building2 },
-    { id: 'camps', label: lang === 'en' ? 'Camps' : 'کیمپ', icon: Calendar },
-    { id: 'analytics', label: lang === 'en' ? 'Analytics' : 'تجزیہ', icon: TrendingUp },
-    { id: 'ml-playground', label: '🧪 Real ML Lab', icon: Sparkles },
+    { id: 'hospitals', label: 'Hospitals', icon: Building2 },
+    { id: 'camps', label: 'Camps', icon: Calendar },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'ml-playground', label: 'Real ML Lab', icon: Sparkles },
   ] as const;
+
+  // Mobile menu — emergency first. The first four labels are pinned by the
+  // click-matrix E2E contract (exact names), the rest complete the nav.
+  const MOBILE_ITEMS = [
+    { label: 'Request Blood (SOS)', icon: Siren, target: 'sos-form', donorTab: null },
+    { label: 'Live Emergencies', icon: Clock, target: 'emergencies-board', donorTab: null },
+    { label: 'Find Donors', icon: Users, target: 'donor-search', donorTab: 'search' as const },
+    { label: 'For Organizations', icon: Building2, target: 'org-portal', donorTab: null },
+    { label: 'Live Map', icon: MapPin, target: 'map', donorTab: null },
+    { label: 'Blood Banks', icon: Droplets, target: 'blood-banks', donorTab: null },
+    { label: 'Donate', icon: Heart, target: 'donor-search', donorTab: 'register' as const },
+    { label: 'Help', icon: Phone, target: 'help', donorTab: null },
+  ];
 
   if (loading) return (
     <div role="status" aria-live="polite">
@@ -209,7 +317,7 @@ export default function App() {
 
       {/* Skip link — WCAG 2.4.1 bypass block for keyboard/screen-reader users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-ink focus:text-white focus:font-semibold focus:text-sm focus:shadow-3">
-        {lang === 'en' ? 'Skip to content' : 'مواد پر جائیں'}
+        Skip to content
       </a>
 
       {/* OFFLINE BANNER — honest, actionable: never leave an emergency user
@@ -251,11 +359,12 @@ export default function App() {
       {/* EMERGENCY TICKER — entrance-only (exit gating stalls in throttled
           tabs; dismissing must be instant) */}
       {unreadCount > 0 && !dismissedAlert && activeAlert && (
-        <section aria-label={lang === 'en' ? 'Live emergency SOS alert' : 'لائیو ہنگامی ایس او ایس الرٹ'}>
+        <section aria-label="Live emergency SOS alert">
         <motion.div
           initial={reduceMotion ? false : { height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           role="alert"
+          ref={alertRef}
           className="relative overflow-hidden z-50"
           style={{ background: 'var(--blood)' }}
         >
@@ -263,7 +372,7 @@ export default function App() {
               <div className="flex items-center gap-2 min-w-0">
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                  <span className="font-mono text-[10px] font-bold text-white tracking-widest uppercase">LIVE SOS</span>
+                  <span className="font-mono text-xs font-bold text-white tracking-widest uppercase">LIVE SOS</span>
                 </div>
                 <div className="overflow-hidden flex-1">
                   <div className="text-white text-xs font-medium truncate">{activeAlert.message}</div>
@@ -271,9 +380,9 @@ export default function App() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button onClick={readAllNotifications} className="text-white hover:text-white/90 text-xs font-semibold underline transition whitespace-nowrap">
-                  {lang === 'en' ? 'Dismiss' : 'بند کریں'}
+                  Dismiss
                 </button>
-                <button onClick={() => setDismissedAlert(true)} aria-label={lang === 'en' ? 'Hide SOS alert' : 'بند کریں'} className="text-white/80 hover:text-white transition">
+                <button onClick={() => setDismissedAlert(true)} aria-label="Hide SOS alert" className="text-white/80 hover:text-white transition">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -286,63 +395,94 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           {/* Logo — BloodRadar shield emblem */}
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0">
+          <a href="#top" className="flex items-center gap-3 min-w-0" aria-label="BloodRadar — back to top">
+            <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
               <img src={brandIcon} alt="BloodRadar logo" className="w-full h-full object-cover" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="font-display font-extrabold text-base tracking-tight leading-none" style={{ color: 'var(--ink)' }}>
                 Blood<span style={{ color: 'var(--blood)' }}>Radar</span>
               </div>
-              <div className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--muted)' }}>Islamabad &amp; Rawalpindi</div>
+              <div className="text-xs font-mono mt-0.5 truncate" style={{ color: 'var(--muted)' }}>Islamabad &amp; Rawalpindi</div>
             </div>
-          </div>
+          </a>
 
-          {/* Desktop Nav Actions */}
-          <div className="hidden md:flex items-center gap-3">
+          {/* Desktop nav links — native hash navigation (no preventDefault). */}
+          <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-1">
+            {NAV_LINKS.map(({ label, target, donorTab }) => (
+              <a
+                key={label}
+                href={`#${target}`}
+                onClick={() => goToNav(donorTab, target)}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150"
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2 md:gap-3">
             {unreadCount > 0 && (
-              <button onClick={() => alertRef.current?.scrollIntoView({ behavior: 'smooth' })} aria-label={lang === 'en' ? `Notifications — ${unreadCount} unread` : `اطلاعات — ${unreadCount} نئی`} className="relative p-2 rounded-lg transition" style={{ background: 'var(--surface-2)' }}>
+              <button onClick={() => alertRef.current?.scrollIntoView({ behavior: 'smooth' })} aria-label={`Notifications — ${unreadCount} unread`} className="relative p-2 rounded-lg transition hover:bg-surface-2" style={{ background: 'var(--surface-2)' }}>
                 <Bell className="w-4 h-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
-                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-white text-[9px] font-bold font-mono" style={{ background: 'var(--blood)' }} aria-hidden="true">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-white text-xs font-bold font-mono" style={{ background: 'var(--blood)' }} aria-hidden="true">
                   {unreadCount}
                 </span>
               </button>
             )}
             {currentUserDonor && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: currentUserDonor.isAvailable ? 'var(--safe)' : 'var(--muted)' }} />
                 <span className="font-medium" style={{ color: 'var(--ink)' }}>{currentUserDonor.name.split(' ')[0]}</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded text-[10px]" style={{ background: 'var(--blood)', color: 'white' }}>{currentUserDonor.bloodGroup}</span>
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--blood)', color: 'white' }}>{currentUserDonor.bloodGroup}</span>
               </div>
             )}
-          </div>
 
-          {/* Mobile menu */}
-          <button
-            className="md:hidden p-2 rounded-lg"
-            style={{ background: 'var(--surface-2)' }}
-            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={mobileMenuOpen}
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
-          </button>
+            {/* Request blood — the one always-visible red action. */}
+            <a
+              href="#sos-form"
+              className="hidden md:inline-flex items-center gap-2 h-12 px-5 rounded-xl font-display font-bold text-sm text-white transition-all duration-150 shadow-2 hover:shadow-3 hover:-translate-y-px"
+              style={{ background: 'var(--blood)' }}
+            >
+              <Heart className="w-4 h-4 fill-current" aria-hidden="true" />
+              Request blood
+            </a>
+            {/* Compact SOS pill on small screens. */}
+            <a
+              href="#sos-form"
+              className="md:hidden inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full font-display font-bold text-xs text-white transition-opacity duration-150 hover:opacity-90"
+              style={{ background: 'var(--blood)' }}
+            >
+              <Siren className="w-4 h-4" aria-hidden="true" />
+              SOS
+            </a>
+
+            {/* Mobile menu */}
+            <button
+              className="lg:hidden p-2 rounded-lg"
+              style={{ background: 'var(--surface-2)' }}
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
+            </button>
+          </div>
         </div>
 
-        {/* Mobile menu dropdown — entrance-only, no exit gating (exit
-            animations stall in throttled/hidden tabs; close must be instant). */}
+        {/* Mobile menu dropdown — native hash links so the URL changes (and
+            the E2E contract holds); clicking closes the menu instantly. */}
         {mobileMenuOpen && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-            className="md:hidden border-t px-4 py-3 flex flex-col gap-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            {[
-              { href: '#emergencies-board', icon: Activity, label: lang === 'en' ? 'Live Emergencies' : 'لائیو ہنگامی' },
-              { href: '#sos-form', icon: AlertTriangle, label: lang === 'en' ? 'Request Blood (SOS)' : 'خون مانگیں (SOS)' },
-              { href: '#donor-search', icon: Users, label: lang === 'en' ? 'Find Donors' : 'عطیہ دہندگان تلاش کریں' },
-              { href: '#org-portal', icon: Building2, label: 'For Organizations' },
-            ].map(({ href, icon: Icon, label }) => (
-              <a key={href} href={href} onClick={() => setMobileMenuOpen(false)}
+            className="lg:hidden border-t px-4 py-3 flex flex-col gap-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            {MOBILE_ITEMS.map(({ label, icon: Icon, target, donorTab }) => (
+              <a
+                key={label}
+                href={`#${target}`}
+                onClick={() => { setMobileMenuOpen(false); goToNav(donorTab, target); }}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition hover:bg-surface-2"
-                style={{ color: 'var(--ink)' }}>
+                style={{ color: 'var(--ink)' }}
+              >
                 <Icon className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
                 {label}
               </a>
@@ -351,143 +491,230 @@ export default function App() {
         )}
       </header>
 
-      {/* HERO */}
-      <div className="hero-glow border-b border-border/60">
-      <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-12 pb-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-7 space-y-6">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold px-3 py-1.5 rounded-full border mb-4 bg-blood-soft border-blood/20 text-blood-ink">
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-blood" />
-              {lang === 'en' ? 'LIVE · Rawalpindi & Islamabad Operations' : 'لائیو · راولپنڈی اور اسلام آباد'}
-            </span>
-            <h1 className="font-display font-extrabold text-5xl md:text-6xl lg:text-7xl leading-[1.02] tracking-tight" style={{ color: 'var(--ink)' }}>
-              {lang === 'en' ? <>Every Second<br /><span style={{ color: 'var(--blood)' }}>Saves a Life.</span></> : <>ہر لمحہ<br /><span style={{ color: 'var(--blood)' }}>زندگی بچاتا ہے۔</span></>}
-            </h1>
-            <p className="text-base md:text-lg mt-5 leading-relaxed max-w-xl" style={{ color: 'var(--muted)' }}>
-              {lang === 'en'
-                ? "Find compatible blood donors faster in Islamabad & Rawalpindi. An early-stage community project: real donors, verified by phone, connected privately to people who need blood right now."
-                : "اسلام آباد اور راولپنڈی میں خون کے عطیہ دہندگان تک تیزی سے رسائی۔ ابتدائی مرحلے کا کمیونٹی منصوبہ۔"}
+      {/* HERO — crisis-first: copy left, the SOS card itself right. */}
+      <div id="top" className="hero-glow border-b border-border/60">
+      <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 md:pt-14 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-start">
+        {/* Left — calm, confident copy. */}
+        <div className="lg:col-span-6 space-y-6 fade-up">
+          <span className="inline-flex items-center gap-2 text-xs font-mono font-semibold px-3 py-1.5 rounded-full border bg-blood-soft border-blood/20 text-blood-ink">
+            <span className="w-1.5 h-1.5 rounded-full bg-blood" aria-hidden="true" />
+            Islamabad &amp; Rawalpindi · Early-stage community project
+          </span>
+          <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] tracking-tight" style={{ color: 'var(--ink)' }}>
+            Find blood donors <span style={{ color: 'var(--blood)' }}>fast.</span>
+          </h1>
+          <p className="font-serif-accent text-2xl md:text-3xl" style={{ color: 'var(--ink)' }}>
+            When every minute counts.
+          </p>
+          <p className="text-base md:text-lg leading-relaxed max-w-xl" style={{ color: 'var(--muted)' }}>
+            Tell us the blood group and the city — we match you with compatible, phone-verified donors nearby and connect you privately.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <a
+              href="#sos-form"
+              aria-label="Request Blood (SOS)"
+              className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl font-display font-bold text-base md:text-lg text-white transition-all duration-150 shadow-2 hover:shadow-3 hover:-translate-y-px"
+              style={{ background: 'var(--blood)' }}
+            >
+              <Heart className="w-5 h-5 fill-current" aria-hidden="true" />
+              Request blood now
+            </a>
+            <button
+              onClick={() => goToNav('register', 'donor-search')}
+              className="inline-flex items-center gap-2 px-5 py-4 rounded-2xl font-display font-bold text-sm md:text-base border transition-all duration-150 shadow-1 hover:shadow-2 hover:-translate-y-px"
+              style={{ background: 'var(--card)', borderColor: 'var(--border-strong)', color: 'var(--ink)' }}
+            >
+              <Droplets className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+              I want to donate
+            </button>
+          </div>
+
+          {/* Honest live line — the real number, never a fake badge. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+            <p className="flex items-center gap-2.5" style={{ color: 'var(--muted)' }}>
+              <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full" style={{ background: 'rgb(196 18 48 / 0.4)' }} />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: 'var(--blood)' }} />
+              </span>
+              {pendingEmergencies.length > 0 ? (
+                <span><strong style={{ color: 'var(--ink)' }}>{pendingEmergencies.length}</strong> open request{pendingEmergencies.length === 1 ? '' : 's'} right now — every minute counts.</span>
+              ) : (
+                <span>No open requests right now. Yours would be the first on the board.</span>
+              )}
             </p>
-          </motion.div>
-
-          {/* Stats pills */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-wrap gap-3">
-            {[
-              { icon: Users, val: donors.length, suffix: '+', label: lang === 'en' ? 'Donors' : 'عطیہ دہندگان' },
-              { icon: Building2, val: hospitals.length, suffix: '', label: lang === 'en' ? 'Hospitals' : 'ہسپتال' },
-              { icon: Zap, val: pendingEmergencies.length, suffix: '', label: lang === 'en' ? 'Active SOS' : 'فعال SOS', urgent: pendingEmergencies.length > 0 },
-            ].map(({ icon: Icon, val, suffix, label, urgent }) => (
-              <div key={label} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm bg-card/80 backdrop-blur shadow-1 ${urgent ? 'border-blood/30' : 'border-border'}`}>
-                <Icon className={`w-4 h-4 ${urgent ? 'text-blood' : 'text-muted'}`} />
-                <span className={`font-display font-bold ${urgent ? 'text-blood' : 'text-ink'}`}>
-                  <AnimatedNumber value={val} suffix={suffix} />
-                </span>
-                <span className="text-xs text-muted">{label}</span>
-              </div>
-            ))}
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="flex flex-wrap gap-3 pt-1">
-            <a href="#emergencies-board" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl font-display font-bold text-sm text-white transition-all duration-150 shadow-2 hover:shadow-3 hover:-translate-y-px" style={{ background: 'var(--blood)' }}>
-              <Activity className="w-4 h-4" />
-              {lang === 'en' ? 'View Live Emergencies' : 'ہنگامی فیڈ دیکھیں'}
+            <a
+              href="#emergencies-board"
+              className="inline-flex items-center gap-1 font-semibold transition-opacity duration-150 hover:opacity-75"
+              style={{ color: 'var(--blood)' }}
+            >
+              View Live Emergencies
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </a>
-            <a href="#sos-form" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl font-display font-bold text-sm border transition-all duration-150 shadow-1 hover:shadow-2 hover:-translate-y-px" style={{ background: 'var(--card)', borderColor: 'var(--border-strong)', color: 'var(--ink)' }}>
-              <AlertTriangle className="w-4 h-4" style={{ color: 'var(--blood)' }} />
-              {lang === 'en' ? 'Request Blood (SOS)' : 'خون مانگیں (SOS)'}
-            </a>
-          </motion.div>
+          </div>
         </div>
 
-        {/* Donor badge + inbox */}
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-5 space-y-6">
+        {/* Right — the SOS card, with the signature drop motif peeking out. */}
+        <div className="lg:col-span-6 relative fade-up">
+          <div className="absolute -top-7 -right-2 sm:-top-10 sm:-right-6 w-24 h-24 sm:w-28 sm:h-28 pointer-events-none z-0" aria-hidden="true">
+            <svg viewBox="0 0 64 64" className="w-full h-full drop-breathe">
+              <circle
+                cx="32" cy="32" r="30"
+                fill="none" stroke="rgb(196 18 48 / 0.35)" strokeWidth="1.5"
+                className="ring-ping"
+                style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+              />
+              <path
+                d="M32 10c7 9 14 16.2 14 22.5a14 14 0 1 1-28 0C18 26.2 25 19 32 10z"
+                fill="rgb(196 18 48 / 0.10)" stroke="var(--blood)" strokeWidth="2" strokeLinejoin="round"
+              />
+              <path
+                d="M26.5 34l4 4 7.5-8"
+                fill="none" stroke="var(--blood)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div id="sos-form" className={`relative z-10 scroll-mt-24 ${flashSOS ? 'sos-ring' : ''}`}>
+            <SOSRequestForm hospitals={hospitals} onSuccess={handleSOSSuccess} />
+          </div>
+
+          {/* Signed-in donor widgets live under the SOS card. */}
           {currentUserDonor && (
-            <DonorStreakBadge donor={currentUserDonor} onToggleAvailability={handleToggleCurrentUserAvailability} onDonorUpdated={handleDonorProfileUpdated} lang={lang} />
+            <div className="relative z-10 mt-6 space-y-6">
+              <DonorStreakBadge donor={currentUserDonor} onToggleAvailability={handleToggleCurrentUserAvailability} onDonorUpdated={handleDonorProfileUpdated} />
+              {meRole === 'donor' && <DonorInbox onChanged={loadData} />}
+              <DonorAlerts onChanged={loadData} />
+            </div>
           )}
-          {currentUserDonor && meRole === 'donor' && (
-            <DonorInbox lang={lang} onChanged={loadData} />
-          )}
-          {currentUserDonor && (
-            <DonorAlerts onChanged={loadData} />
-          )}
-        </motion.div>
+        </div>
       </section>
       </div>
 
-      {/* MAIN CONTENT */}
-      <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pb-24 space-y-8">
-
-        {/* ROW 1 — crisis actions first: raise an SOS, watch the live board. */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-
-          {/* SOS Form */}
-          <div id="sos-form" className={`transition-all duration-200 rounded-3xl lg:col-span-5 ${flashSOS ? 'sos-ring' : ''}`}>
-            <SOSRequestForm hospitals={hospitals} onSuccess={handleSOSSuccess} lang={lang} />
-          </div>
-
-          {/* EMERGENCIES BOARD */}
-          <div id="emergencies-board" className="lg:col-span-7 rounded-3xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
-                <h2 className="font-display font-bold text-base" style={{ color: 'var(--ink)' }}>
-                  {lang === 'en' ? 'Active Emergency SOS' : 'فعال ہنگامی SOS'}
-                </h2>
-              </div>
-              <span className="font-mono text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
+      {/* MAIN CONTENT — full-bleed so the bands span edge to edge. */}
+      {view === "insights" ? (
+        <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pb-28 md:pb-24">
+          <div className="py-10 space-y-8">
+            <div>
+              <a href="#top" className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity duration-150 hover:opacity-75" style={{ color: 'var(--blood)' }}>
+                <ChevronRight className="w-4 h-4 rotate-180" aria-hidden="true" />
+                Back to home
+              </a>
+              <h2 className="font-display font-extrabold text-3xl md:text-4xl mt-4" style={{ color: 'var(--ink)' }}>Analytics &amp; ML lab</h2>
+              <p className="text-sm md:text-base mt-3 max-w-2xl leading-relaxed" style={{ color: 'var(--muted)' }}>
+                The real numbers from this deployment — nothing invented. The ML lab is a local, explainable demo of donor matching; it never makes medical decisions.
+              </p>
             </div>
-            {/* Screen-reader summary of the board state — announced when the
-                count changes via SSE, without the animated counter noise. */}
-            <p aria-live="polite" className="sr-only">
-              {pendingEmergencies.length === 0
-                ? (lang === 'en' ? 'No active emergencies.' : 'کوئی فعال ہنگامی صورتحال نہیں۔')
-                : (lang === 'en' ? `${pendingEmergencies.length} active emergencies pending.` : `${pendingEmergencies.length} فعال ہنگامی درخواستیں زیر التوا ہیں۔`)}
-            </p>
-            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {emergencies.length === 0 && <p className="text-sm col-span-2 text-center py-8" style={{ color: 'var(--muted)' }}>No active emergencies right now.</p>}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+              <Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}>
+                <StatsDashboard />
+              </Suspense>
+              <Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}>
+                <RealMLPanel />
+              </Suspense>
+            </div>
+          </div>
+        </main>
+      ) : (
+      <main id="main-content" className="flex-1 pb-28 md:pb-24">
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 space-y-8">
+
+        {/* LIVE REQUESTS STRIP — the live truth, full width. Horizontal
+            snap-scroll cards on mobile, grid on larger screens. Each card
+            carries the real blood group (big), the hospital, how long ago
+            the request was made, and one concrete action. */}
+        <div id="emergencies-board" className="rounded-3xl border scroll-mt-24" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
+              <h2 className="font-display font-bold text-base" style={{ color: 'var(--ink)' }}>Live requests</h2>
+            </div>
+            <span className="font-mono text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
+          </div>
+          {/* Screen-reader summary of the board state — announced when the
+              count changes via SSE, without the animated counter noise. */}
+          <p aria-live="polite" className="sr-only">
+            {pendingEmergencies.length === 0
+              ? 'No active emergencies.'
+              : `${pendingEmergencies.length} active emergencies pending.`}
+          </p>
+          {emergencies.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <p className="text-base font-semibold" style={{ color: 'var(--ink)' }}>No open requests right now. That's good news.</p>
+              <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed" style={{ color: 'var(--muted)' }}>
+                If you can give blood,{" "}
+                <a
+                  href="#donor-search"
+                  onClick={() => setActiveDonorTab('register')}
+                  className="font-semibold underline underline-offset-2 transition-opacity hover:opacity-75"
+                  style={{ color: 'var(--blood)' }}
+                >
+                  be the first to register as a donor
+                </a>{" "}
+                — you'll be alerted the moment someone needs your group.
+              </p>
+            </div>
+          ) : (
+            <div className="p-5 flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory sm:grid sm:grid-cols-2 sm:overflow-visible">
               {emergencies.map(sos => (
-                <div key={sos.id} className={`p-4 rounded-xl border transition-all ${highlightedSosIds.has(sos.id) ? 'live-highlight' : ''} ${sos.status === 'Fulfilled' ? 'bg-surface border-border opacity-60' : 'bg-blood-soft/50 border-blood/25'}`}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <span className={`inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded mb-1.5 ${sos.urgency === 'Immediate (SOS)' ? 'bg-blood text-white' : 'bg-warn-soft text-warn-ink'}`}>
-                        {sos.urgency}
-                      </span>
-                      <div className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
+                <article key={sos.id} className={`snap-start shrink-0 w-[85%] sm:w-auto p-4 rounded-xl border transition-all ${highlightedSosIds.has(sos.id) ? 'live-highlight' : ''} ${sos.status === 'Fulfilled' ? 'bg-surface border-border opacity-60' : 'bg-blood-soft/50 border-blood/25'}`}>
+                  <div className="flex items-start gap-3 mb-2.5">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-mono font-bold shrink-0" style={{ background: 'var(--blood)' }} aria-label={`Blood group ${sos.bloodGroup}`}>
+                      {sos.bloodGroup}
                     </div>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>{sos.bloodGroup}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
+                        <span className={`inline-block text-xs font-mono font-bold px-1.5 py-0.5 rounded ${sos.urgency === 'Immediate (SOS)' ? 'bg-blood text-white' : 'bg-warn-soft text-warn-ink'}`}>
+                          {sos.urgency}
+                        </span>
+                      </div>
+                      <div className="text-xs mt-1 flex items-center gap-1.5" style={{ color: 'var(--muted)' }}>
+                        <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        {timeAgo(sos.createdAt)} · {sos.hospitalName}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{sos.reason}</p>
-                  <div className="text-[10px] space-y-1 mb-3" style={{ color: 'var(--muted)' }}>
-                    <div>🏥 {sos.hospitalName}</div>
+                  <p className="text-xs mb-2 leading-relaxed" style={{ color: 'var(--muted)' }}>{sos.reason}</p>
+                  <div className="text-xs space-y-1 mb-3" style={{ color: 'var(--muted)' }}>
                     {sos.postedBy === 'organization' && sos.orgName && (
-                      <div>🏛️ Posted by <span className="font-semibold" style={{ color: 'var(--ink)' }}>{sos.orgName}</span> · verified organization</div>
+                      <div className="flex items-center gap-1.5">Posted by <span className="font-semibold" style={{ color: 'var(--ink)' }}>{sos.orgName}</span> · verified organization</div>
                     )}
-                    <div>⏰ Required by <span className="font-semibold" style={{ color: 'var(--blood)' }}>{sos.requiredBy}</span></div>
-                    <div>👥 <span className="font-semibold" style={{ color: 'var(--safe-ink)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
+                    <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> Required by <span className="font-semibold" style={{ color: 'var(--blood)' }}>{sos.requiredBy}</span></div>
+                    <div className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> <span className="font-semibold" style={{ color: 'var(--safe-ink)' }}>{sos.matchingDonorsCount} compatible donors</span> nearby</div>
                   </div>
                   {sos.status === 'Pending' ? (
                     <div className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs bg-blood-soft border border-blood/15 text-muted">
                       <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blood)' }} />
                       <span>
-                        {lang === 'en'
-                          ? `Contact ${sos.contactPhone} — the full number is revealed privately when a donor accepts the request.`
-                          : `رابطہ ${sos.contactPhone} — مکمل نمبر صرف رضاکار کے قبول کرنے پر ظاہر ہوتا ہے۔`}
+                        Contact {sos.contactPhone} — the full number is revealed privately when a donor accepts the request.
                       </span>
                     </div>
                   ) : sos.status === 'Cancelled' ? (
                     <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
-                      <X className="w-4 h-4" /> {lang === 'en' ? 'Cancelled by requester' : 'درخواست گزار نے منسوخ کر دیا'}
+                      <X className="w-4 h-4" /> Cancelled by requester
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-safe-soft text-safe-ink">
-                      <CheckCircle2 className="w-4 h-4" /> {lang === 'en' ? 'Fulfilled · Lives Saved' : 'مکمل · زندگی بچائی گئی'}
+                      <CheckCircle2 className="w-4 h-4" /> Fulfilled · Lives Saved
                     </div>
                   )}
-                  <SosReportButton sosId={sos.id} lang={lang} />
-                </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    {sos.status === 'Pending' && (
+                      <button
+                        onClick={() => goToNav('register', 'donor-search')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold text-white transition hover:opacity-90"
+                        style={{ background: 'var(--blood)' }}
+                      >
+                        <Heart className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                        I can help
+                      </button>
+                    )}
+                    <SosReportButton sosId={sos.id} />
+                  </div>
+                </article>
               ))}
             </div>
-          </div>
+          )}
         </div>
 
         {/* ROW 2 — discovery: map + directory left, donors & orgs right. */}
@@ -495,16 +722,18 @@ export default function App() {
 
           {/* LEFT — Map + Directory */}
           <div className="lg:col-span-8 space-y-6">
-            <Suspense fallback={<MapCardSkeleton />}>
-              <MapComponent hospitals={hospitals} camps={camps} selectedItem={selectedItem} onSelectItem={(item) => { setSelectedItem(item); }} lang={lang} />
-            </Suspense>
+            <div id="map" className="scroll-mt-24">
+              <Suspense fallback={<MapCardSkeleton />}>
+                <MapComponent hospitals={hospitals} camps={camps} selectedItem={selectedItem} onSelectItem={(item) => { setSelectedItem(item); }} />
+              </Suspense>
+            </div>
 
           {/* Directory Tabs */}
-          <div className="rounded-3xl border overflow-hidden" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <div id="blood-banks" className="rounded-3xl border overflow-hidden scroll-mt-24" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
             {/* Tab Nav */}
             <div
               role="tablist"
-              aria-label={lang === 'en' ? 'Directory sections' : 'ڈائریکٹری سیکشنز'}
+              aria-label="Directory sections"
               onKeyDown={(e) => {
                 const idx = TABS.findIndex(t => t.id === activeTab);
                 let next = -1;
@@ -532,7 +761,7 @@ export default function App() {
               {/* Deliberately no AnimatePresence/mode="wait" here: exit-animation
                   gating stalls tab switches in throttled/hidden tabs (rAF paused)
                   and for reduced-motion users. Entrance-only motion keeps the
-                  switch instant while P2.8 reworks motion properly. */}
+                  switch instant. */}
               {activeTab === 'hospitals' && (
                   <motion.div key="hospitals" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                     {hospitals.some(h => h.isSample) && (
@@ -540,9 +769,7 @@ export default function App() {
                         <Info className="w-4 h-4 shrink-0 mt-0.5 text-warn-ink" />
                         <p className="text-xs leading-relaxed text-warn-ink">
                           <span className="font-bold">Sample data — not live inventory. </span>
-                          {lang === 'en'
-                            ? 'Stock levels below were compiled from public information and are not connected to hospital systems. Always call the hospital to confirm before travelling.'
-                            : 'نیچے دیا گیا اسٹاک نمونے کا ڈیٹا ہے — لائیو نہیں۔ سفر سے پہلے ہسپتال کو کال کر کے تصدیق کریں۔'}
+                          Stock levels below were compiled from public information and are not connected to hospital systems. Always call the hospital to confirm before travelling.
                         </p>
                       </div>
                     )}
@@ -552,32 +779,32 @@ export default function App() {
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <div className="font-display font-bold text-sm leading-tight" style={{ color: 'var(--ink)' }}>{h.name}</div>
-                            <div className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>{h.address}</div>
+                            <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{h.address}</div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0 ml-2">
                             {h.isSample && <Badge tone="warn" mono>Sample</Badge>}
-                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-border text-muted">{h.city.slice(0, 3).toUpperCase()}</span>
+                            <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded border border-border text-muted">{h.city.slice(0, 3).toUpperCase()}</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] mb-3" style={{ color: 'var(--muted)' }}>
+                        <div className="flex items-center gap-2 text-xs mb-3" style={{ color: 'var(--muted)' }}>
                           <Phone className="w-3 h-3" /> {h.phone}
                           <span className="ml-auto font-semibold" style={{ color: 'var(--safe-ink)' }}>● {h.emergencyHours}</span>
                         </div>
                         <div className="grid grid-cols-4 gap-1">
                           {Object.entries(h.bloodAvailability).slice(0, 4).map(([grp, stock]) => (
-                            <div key={grp} className="rounded text-center py-1 text-[9px] font-mono border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                            <div key={grp} className="rounded text-center py-1 text-xs font-mono border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
                               <div className="font-bold" style={{ color: 'var(--ink)' }}>{grp}</div>
-                              <div style={{ color: stock === 'In Stock' ? 'var(--safe)' : stock === 'Low' ? 'var(--warn)' : 'var(--blood)' }}>{stock === 'In Stock' ? '✓' : stock === 'Low' ? '!' : '✗'}</div>
+                              <div style={{ color: stock === 'In Stock' ? 'var(--safe-text)' : stock === 'Low' ? 'var(--warn-text)' : 'var(--danger-text)' }}>{stock === 'In Stock' ? '✓' : stock === 'Low' ? '!' : '✗'}</div>
                             </div>
                           ))}
                         </div>
                         {h.stockLastUpdated && (
-                          <div className="mt-2 text-[9px] font-mono text-muted">
-                            {lang === 'en' ? `Stock last reviewed ${formatReviewedDate(h.stockLastUpdated)}` : `اسٹاک آخری بار ${formatReviewedDate(h.stockLastUpdated)} کو دیکھا گیا`}
+                          <div className="mt-2 text-xs font-mono text-muted">
+                            {h.isSample ? 'Sample data — call to confirm. ' : ''}Stock reviewed {formatReviewedDate(h.stockLastUpdated)}
                           </div>
                         )}
-                        <div className="mt-3 flex items-center gap-1 text-[10px] font-semibold" style={{ color: 'var(--blood)' }}>
-                          <MapPin className="w-3 h-3" /> {lang === 'en' ? 'Show on map' : 'نقشے پر دیکھیں'} <ChevronRight className="w-3 h-3" />
+                        <div className="mt-3 flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--blood)' }}>
+                          <MapPin className="w-3 h-3" /> Show on map <ChevronRight className="w-3 h-3" />
                         </div>
                       </button>
                     ))}
@@ -591,9 +818,7 @@ export default function App() {
                         <Info className="w-4 h-4 shrink-0 mt-0.5 text-warn-ink" />
                         <p className="text-xs leading-relaxed text-warn-ink">
                           <span className="font-bold">Sample data. </span>
-                          {lang === 'en'
-                            ? 'Camp listings below are sample entries for demonstration. Check with the organizer before travelling.'
-                            : 'نیچے دیے گئے کیمپ نمونے کے اندراجات ہیں۔ سفر سے پہلے منتظم سے تصدیق کریں۔'}
+                          Camp listings below are sample entries for demonstration. Check with the organizer before travelling.
                         </p>
                       </div>
                     )}
@@ -601,22 +826,22 @@ export default function App() {
                     {camps.map(c => (
                       <div key={c.id} className="p-4 rounded-xl border flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-warn-soft border-warn/30 text-warn-ink">CAMP</span>
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border bg-warn-soft border-warn/30 text-warn-ink">CAMP</span>
                           {c.isSample && <Badge tone="warn" mono>Sample</Badge>}
-                          <span className="text-[10px] ml-auto" style={{ color: 'var(--muted)' }}>{c.city}</span>
+                          <span className="text-xs ml-auto" style={{ color: 'var(--muted)' }}>{c.city}</span>
                         </div>
                         <div className="font-display font-bold text-sm mb-1" style={{ color: 'var(--ink)' }}>{c.title}</div>
-                        <div className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>📍 {c.location}</div>
-                        <div className="text-[11px] leading-relaxed mb-3 flex-1" style={{ color: 'var(--muted)' }}>{c.description}</div>
+                        <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: 'var(--muted)' }}><MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> {c.location}</div>
+                        <div className="text-xs leading-relaxed mb-3 flex-1" style={{ color: 'var(--muted)' }}>{c.description}</div>
                         <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
-                          <div className="text-[10px]" style={{ color: 'var(--muted)' }}>
-                            <div className="font-semibold">📅 {c.date}</div>
+                          <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                            <div className="font-semibold flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> {c.date}</div>
                             <div className="font-mono">{c.time}</div>
                           </div>
                           <button onClick={() => handleCampRegistration(c.id)}
-                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition hover:opacity-90"
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition hover:opacity-90"
                             style={{ background: 'var(--blood)' }}>
-                            {lang === 'en' ? `Register (${c.registeredCount})` : `اندراج (${c.registeredCount})`}
+                            Register ({c.registeredCount})
                           </button>
                         </div>
                       </div>
@@ -624,8 +849,8 @@ export default function App() {
                     </div>
                   </motion.div>
                 )}
-                {activeTab === 'analytics' && <motion.div key="analytics" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}><StatsDashboard lang={lang} /></Suspense></motion.div>}
-                {activeTab === 'ml-playground' && <motion.div key="ml" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}><RealMLPanel lang={lang} /></Suspense></motion.div>}
+                {activeTab === 'analytics' && <motion.div key="analytics" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}><StatsDashboard /></Suspense></motion.div>}
+                {activeTab === 'ml-playground' && <motion.div key="ml" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}><RealMLPanel /></Suspense></motion.div>}
             </div>
           </div>
 
@@ -634,8 +859,8 @@ export default function App() {
         {/* RIGHT COLUMN — donors, org portal & hotlines (inside ROW 2 grid). */}
         <div className="lg:col-span-4 space-y-6">
           {/* Donor Search */}
-          <div id="donor-search">
-            <DonorSearch donors={donors} lang={lang} onReviewSubmitted={loadData} activeTab={activeDonorTab} setActiveTab={setActiveDonorTab} />
+          <div id="donor-search" className="scroll-mt-24">
+            <DonorSearch donors={donors} onReviewSubmitted={loadData} activeTab={activeDonorTab} setActiveTab={setActiveDonorTab} />
           </div>
 
           {/* Admin Dashboard — only rendered for the admin role so ordinary
@@ -643,13 +868,13 @@ export default function App() {
           {meRole === 'admin' && <AdminPanel onDataChanged={loadData} />}
 
           {/* Organization Portal */}
-          <OrgPortal lang={lang} hospitals={hospitals} onDataChanged={loadData} />
+          <OrgPortal hospitals={hospitals} onDataChanged={loadData} />
 
           {/* Emergency Hotlines */}
-          <div className="rounded-3xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <div id="help" className="rounded-3xl border p-5 scroll-mt-24" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
             <h2 className="font-display font-bold text-sm mb-4 flex items-center gap-2" style={{ color: 'var(--ink)' }}>
               <Phone className="w-4 h-4" style={{ color: 'var(--blood)' }} />
-              {lang === 'en' ? '24/7 Emergency Hotlines' : 'ہنگامی رابطہ نمبرز'}
+              24/7 Emergency Hotlines
             </h2>
             {[
               { name: 'PIMS Trauma', number: '+92 51 9261170' },
@@ -665,21 +890,64 @@ export default function App() {
           </div>
           </div>
         </div>
-      </main>
+          </div>
+
+          {/* How it works — three illustrated steps. */}
+          <HowItWorks />
+
+          {/* Become a donor band (blood-tint) + trust band (wine). */}
+          <BecomeDonorBand onBecomeDonor={() => { setActiveDonorTab('register'); scrollToId('donor-search'); }} />
+          <TrustBand />
+        </main>
+      )}
+
+      {/* MOBILE STICKY BOTTOM BAR — 64px + safe area, slides up once the hero
+          scrolls away. Hidden on md+ where the header CTA is always visible. */}
+      <div
+        className={`md:hidden fixed bottom-0 inset-x-0 z-40 transition-transform duration-200 ${bottomBarVisible ? 'translate-y-0' : 'translate-y-full'}`}
+        style={{ background: 'var(--card)', borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="grid grid-cols-2 gap-2 p-2">
+          <a href="#sos-form" className="inline-flex items-center justify-center gap-2 h-12 rounded-xl font-display font-bold text-sm text-white transition hover:opacity-90" style={{ background: 'var(--blood)' }}>
+            <Heart className="w-4 h-4 fill-current" aria-hidden="true" />
+            Request blood
+          </a>
+          <a href="#donor-search" onClick={() => setActiveDonorTab('search')} className="inline-flex items-center justify-center gap-2 h-12 rounded-xl font-display font-bold text-sm border transition" style={{ background: 'var(--card)', borderColor: 'var(--border-strong)', color: 'var(--ink)' }}>
+            <Users className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+            Find donors
+          </a>
+        </div>
+      </div>
 
       {/* FOOTER */}
       <footer className="border-t py-8 text-center" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-        <div className="flex items-center justify-center gap-2 mb-2">
+        <div className="flex items-center justify-center gap-2 mb-4">
           <Droplets className="w-4 h-4 fill-current" style={{ color: 'var(--blood)' }} />
           <span className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>BloodRadar</span>
         </div>
+        <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-4 px-4">
+          {[
+            { label: 'Request blood', href: '#sos-form' },
+            { label: 'Find donors', href: '#donor-search' },
+            { label: 'Live map', href: '#map' },
+            { label: 'Become a donor', href: '#become-a-donor' },
+            { label: 'Analytics & ML lab', href: '#insights' },
+          ].map(({ label, href }) => (
+            <a key={label} href={href} className="text-sm font-semibold transition-colors duration-150" style={{ color: 'var(--muted)' }}>
+              {label}
+            </a>
+          ))}
+        </nav>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>© 2026 BloodRadar · Islamabad &amp; Rawalpindi, Pakistan — an early-stage community project</p>
-        <p className="text-[10px] mt-1 italic" style={{ color: 'var(--muted)', opacity: 0.7 }}>"A drop given in time is a lifetime returned."</p>
+        <p className="text-xs mt-1 italic" style={{ color: 'var(--muted)', opacity: 0.7 }}>"A drop given in time is a lifetime returned."</p>
+        <p className="text-xs mt-2 max-w-md mx-auto" style={{ color: 'var(--muted)' }}>
+          This is not a medical service. In a life-threatening emergency, call Rescue 1122 or your hospital directly.
+        </p>
       </footer>
 
       {/* AI Chatbot */}
       <Suspense fallback={null}>
-        <AIChatbot lang={lang} onEmergencyTriggered={handleAIEmergencyTrigger} />
+        <AIChatbot onEmergencyTriggered={handleAIEmergencyTrigger} />
       </Suspense>
     </div>
   );

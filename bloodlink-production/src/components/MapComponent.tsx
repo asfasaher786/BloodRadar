@@ -8,7 +8,6 @@ interface MapComponentProps {
   camps: BloodCamp[];
   selectedItem: Hospital | BloodCamp | null;
   onSelectItem: (item: any) => void;
-  lang: 'en' | 'ur';
 }
 
 type LocateStatus = 'idle' | 'locating' | 'success' | 'denied' | 'error';
@@ -31,7 +30,7 @@ function campIconHtml(isSelected: boolean): string {
   `;
 }
 
-export default function MapComponent({ hospitals, camps, selectedItem, onSelectItem, lang }: MapComponentProps) {
+export default function MapComponent({ hospitals, camps, selectedItem, onSelectItem }: MapComponentProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const clusterRef = useRef<any>(null);
@@ -282,7 +281,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
           <div className="w-2.5 h-2.5 bg-[var(--blood)] rounded-full animate-ping"></div>
           <h2 className="font-sans font-bold text-[var(--ink)] flex items-center gap-1.5 text-sm md:text-base">
             <Building className="w-4 h-4 text-[var(--blood)]" />
-            {lang === 'en' ? 'Live Blood Map' : 'لائیو بلڈ میپ'}
+            Live Blood Map
           </h2>
         </div>
         <div className="flex gap-1.5 items-center">
@@ -299,13 +298,13 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
           <button
             id="btn-locate-me"
             onClick={handleLocateMe}
-            aria-label={lang === 'en' ? 'Locate me on the map' : 'میرا مقام دکھائیں'}
-            title={lang === 'en' ? 'Locate me' : 'میرا مقام'}
+            aria-label="Locate me on the map"
+            title="Locate me"
             disabled={locateStatus === 'locating'}
             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)] transition disabled:opacity-50 flex items-center gap-1"
           >
             <Crosshair className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{lang === 'en' ? 'Locate me' : 'میرا مقام'}</span>
+            <span className="hidden sm:inline">Locate me</span>
           </button>
         </div>
       </div>
@@ -321,24 +320,28 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
             color: locateStatus === 'success' ? 'var(--safe-ink)' : 'var(--warn-ink)',
           }}
         >
-          {locateStatus === 'locating' && (lang === 'en' ? 'Finding your location…' : 'آپ کا مقام تلاش کیا جا رہا ہے…')}
-          {locateStatus === 'success' && (lang === 'en' ? 'Here you are — the map is centered on your location.' : 'نقشہ آپ کے مقام پر مرکوز ہے۔')}
-          {locateStatus === 'denied' && (lang === 'en' ? 'Location access denied — showing the city map instead.' : 'مقام کی اجازت نہیں دی گئی — شہر کا نقشہ دکھایا جا رہا ہے۔')}
-          {locateStatus === 'error' && (lang === 'en' ? 'Couldn\'t get your location right now — showing the city map instead.' : 'ابھی آپ کا مقام حاصل نہیں ہو سکا۔')}
+          {locateStatus === 'locating' && 'Finding your location…'}
+          {locateStatus === 'success' && 'Here you are — the map is centered on your location.'}
+          {locateStatus === 'denied' && 'Location access denied — showing the city map instead.'}
+          {locateStatus === 'error' && 'Couldn\'t get your location right now — showing the city map instead.'}
         </div>
       )}
 
       {/* Map Division */}
       <div 
         ref={mapContainerRef} 
-        style={{ height: "420px" }} 
-        className="w-full bg-[var(--surface)] relative z-10"
+        className="w-full aspect-[4/5] sm:aspect-[16/10] bg-[var(--surface)] relative z-10"
         id="leaflet-live-map-container"
       >
+        {/* Muted-tile veil: sits at z-[250] — above the tile pane (z=200) but
+            below markers (600)/popups (700)/controls (800) — so tiles read as
+            quiet paper while every interactive layer stays full-contrast.
+            pointer-events:none keeps zoom/pan working through it. */}
+        <div className="map-mute-overlay absolute inset-0 z-[250] pointer-events-none" aria-hidden="true" />
         {!mapLoaded && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface-2)]/90 z-20">
             <div className="w-10 h-10 border-4 border-[var(--blood)] border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-xs text-[var(--muted)] mt-3 font-mono">{lang === 'en' ? 'Loading map…' : 'نقشہ لوڈ ہو رہا ہے…'}</p>
+            <p className="text-xs text-[var(--muted)] mt-3 font-mono">Loading map…</p>
           </div>
         )}
 
@@ -346,7 +349,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
         {sheetItem && (
           <div
             id="map-mobile-sheet"
-            className="absolute bottom-3 left-3 right-3 z-30 md:hidden rounded-xl border shadow-2xl p-4"
+            className="absolute bottom-3 left-3 right-3 z-[400] md:hidden rounded-xl border shadow-2xl p-4"
             style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
           >
             <div className="flex items-start justify-between gap-2">
@@ -354,7 +357,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
                 <h3 className="font-display font-bold text-sm leading-tight" style={{ color: 'var(--ink)' }}>
                   {'name' in sheetItem ? sheetItem.name : sheetItem.title}
                 </h3>
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
                   <MapPin className="w-3 h-3 inline mr-1" />
                   {'address' in sheetItem ? sheetItem.address : sheetItem.location}, {sheetItem.city}
                 </p>
@@ -362,7 +365,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
               <button
                 id="btn-map-sheet-close"
                 onClick={() => onSelectItem(null)}
-                aria-label={lang === 'en' ? 'Close details' : 'بند کریں'}
+                aria-label="Close details"
                 className="shrink-0 p-1.5 rounded-lg transition"
                 style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}
               >
@@ -378,7 +381,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
                   style={{ background: 'var(--safe-ink)' }}
                 >
                   <Phone className="w-3.5 h-3.5" />
-                  {lang === 'en' ? 'Call hospital' : 'ہسپتال کو کال کریں'}
+                  Call hospital
                 </a>
               )}
               {!isHospitalSheet && 'date' in sheetItem && (
@@ -390,10 +393,10 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
             </div>
 
             {'isSample' in sheetItem && sheetItem.isSample && (
-              <p className="mt-2 text-[10px] font-semibold" style={{ color: 'var(--warn-ink)' }}>
+              <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--warn-ink)' }}>
                 {isHospitalSheet
-                  ? (lang === 'en' ? 'Sample data — not live inventory. Call to confirm stock.' : 'نمونے کا ڈیٹا — اسٹاک کی تصدیق کے لیے کال کریں۔')
-                  : (lang === 'en' ? 'Sample listing — confirm with the organizer.' : 'نمونے کا اندراج — منتظم سے تصدیق کریں۔')}
+                  ? 'Sample data — not live inventory. Call to confirm stock.'
+                  : 'Sample listing — confirm with the organizer.'}
               </p>
             )}
           </div>
@@ -403,11 +406,11 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       <div className="p-3 bg-[var(--surface)] flex items-center justify-around text-xs border-t border-[var(--border)] text-[var(--muted)] font-mono">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full" style={{ background: 'var(--blood)', border: '2px solid #ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}></div>
-          <span className="font-sans font-medium">{lang === 'en' ? 'Hospitals / Blood Banks' : 'ہسپتال / بلڈ بینک'}</span>
+          <span className="font-sans font-medium">Hospitals / Blood Banks</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full" style={{ background: 'var(--warn)', border: '2px solid #ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}></div>
-          <span className="font-sans font-medium">{lang === 'en' ? 'Donation Camps' : 'کیمپ مقامات'}</span>
+          <span className="font-sans font-medium">Donation Camps</span>
         </div>
       </div>
     </div>
