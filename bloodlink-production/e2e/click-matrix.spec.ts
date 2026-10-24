@@ -57,7 +57,10 @@ test.describe("click matrix — header & chrome", () => {
 
   test("ticker: X hides it, Dismiss clears unread so bell goes too", async ({ page, browser, viewport }) => {
     test.skip((viewport?.width ?? 1280) < 768, "bell is desktop-only");
-    test.setTimeout(120_000); // register + SOS + notify + two reloads: slow engines
+    // Webkit dev-mode costs 4–7s per interaction on this machine (~35 actions
+    // + 4 loads ≈ 140–160s); 180s matches the CLI timeout already used for the
+    // donor-search test on webkit. Behavioral contracts are unchanged.
+    test.setTimeout(180_000);
     // ── Donor registers (stays logged in on this page).
     const donorContext = await browser.newContext();
     const donorPage = await donorContext.newPage();
