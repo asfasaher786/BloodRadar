@@ -3,7 +3,7 @@ import { API_BASE } from "../lib/api";
 import { Brain, RefreshCw, MapPin } from "lucide-react";
 
 interface RealMLPanelProps {
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
 }
 
 interface ModelStatus {
@@ -14,7 +14,7 @@ interface ModelStatus {
   minRequired: number;
 }
 
-export default function RealMLPanel({ lang }: RealMLPanelProps) {
+export default function RealMLPanel({ lang = 'en' }: RealMLPanelProps) {
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [testText, setTestText] = useState("");
   const [result, setResult] = useState<any>(null);

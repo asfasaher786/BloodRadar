@@ -13,7 +13,7 @@ import Badge from "./ui/Badge";
 
 interface DonorSearchProps {
   donors: Donor[];
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
   onReviewSubmitted: () => void;
   activeTab?: 'search' | 'register';
   setActiveTab?: (tab: 'search' | 'register') => void;
@@ -32,7 +32,7 @@ const DONOR_COMPATIBILITY: { [key: string]: string[] } = {
   "AB+": ["AB+"]
 };
 
-export default function DonorSearch({ donors, lang, onReviewSubmitted, activeTab, setActiveTab }: DonorSearchProps) {
+export default function DonorSearch({ donors, lang = 'en', onReviewSubmitted, activeTab, setActiveTab }: DonorSearchProps) {
   const [bloodFilter, setBloodFilter] = useState("All");
   const [cityFilter, setCityFilter] = useState("All");
   const [availableOnly, setAvailableOnly] = useState(false);

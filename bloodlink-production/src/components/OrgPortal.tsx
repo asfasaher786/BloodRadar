@@ -49,13 +49,13 @@ interface OrgSos {
 }
 
 interface Props {
-  lang: "en";
+  lang?: "en";
   hospitals: Hospital[];
   /** Called after any data-changing action so the public board/hospital list refresh. */
   onDataChanged: () => void;
 }
 
-export default function OrgPortal({ lang, hospitals, onDataChanged }: Props) {
+export default function OrgPortal({ lang = 'en', hospitals, onDataChanged }: Props) {
   // Session + org state.
   const [me, setMe] = useState<{ phone: string; role: string } | null | "loading">("loading");
   const [org, setOrg] = useState<OrgRecord | null>(null);

@@ -5,7 +5,7 @@ import { API_BASE } from "../lib/api";
 // Abuse controls (Phase 3): anyone can report a suspicious SOS. This
 // keeps its own state per card — idle → optional reason → POST → thanks.
 // No auth wall: reporting must never be gated behind an account.
-export default function SosReportButton({ sosId, lang }: { sosId: string; lang: 'en' }) {
+export default function SosReportButton({ sosId, lang = 'en' }: { sosId: string; lang?: 'en' }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);

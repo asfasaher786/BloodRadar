@@ -18,10 +18,10 @@ interface StatsData {
 }
 
 interface StatsDashboardProps {
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
 }
 
-export default function StatsDashboard({ lang }: StatsDashboardProps) {
+export default function StatsDashboard({ lang = 'en' }: StatsDashboardProps) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
 

@@ -15,7 +15,7 @@ export interface RankedMatch {
   reasons: string[];
 }
 
-export default function TopMatches({ sosId, lang }: { sosId: string; lang: 'en' | 'ur' }) {
+export default function TopMatches({ sosId }: { sosId: string }) {
   const [matches, setMatches] = useState<RankedMatch[] | null>(null);
   const [openWhy, setOpenWhy] = useState<string | null>(null);
 
@@ -34,9 +34,9 @@ export default function TopMatches({ sosId, lang }: { sosId: string; lang: 'en' 
 
   return (
     <div className="mt-3 rounded-lg border p-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-      <p className="text-[10px] font-bold flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
+      <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
         <Info className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blood)' }} aria-hidden="true" />
-        {lang === 'en' ? 'Top matches nearby — ranked by transparent rules, not AI' : 'قریبی بہترین میچ — شفاف اصولوں سے درجہ بندی'}
+        Top matches nearby — ranked by transparent rules, not AI
       </p>
       <div className="mt-2 space-y-2">
         {top.map(m => (
@@ -44,14 +44,14 @@ export default function TopMatches({ sosId, lang }: { sosId: string; lang: 'en' 
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-display font-black text-white shrink-0"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-display font-black text-white shrink-0"
                   style={{ background: 'var(--blood)' }}
                   aria-hidden="true"
                 >
                   {m.bloodGroup}
                 </span>
                 <span className="text-xs font-semibold truncate" style={{ color: 'var(--ink)' }}>{m.name}</span>
-                <span className="text-[10px] truncate" style={{ color: 'var(--muted)' }}>{m.city}</span>
+                <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>{m.city}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <div
@@ -62,12 +62,12 @@ export default function TopMatches({ sosId, lang }: { sosId: string; lang: 'en' 
                 >
                   <div className="h-full rounded-full" style={{ width: `${Math.min(m.score, 100)}%`, background: 'var(--safe)' }} />
                 </div>
-                <span className="text-[10px] font-mono font-bold" style={{ color: 'var(--safe-ink)' }}>{m.score}</span>
+                <span className="text-xs font-mono font-bold" style={{ color: 'var(--safe-ink)' }}>{m.score}</span>
                 <button
                   id={`btn-why-donor-${m.id}`}
                   onClick={() => setOpenWhy(openWhy === m.id ? null : m.id)}
                   aria-expanded={openWhy === m.id}
-                  aria-label={lang === 'en' ? `Why ${m.name} ranks at ${m.score}` : `${m.name} کو یہ درجہ کیوں`}
+                  aria-label={`Why ${m.name} ranks at ${m.score}`}
                   className="p-1 rounded-md hover:bg-surface-2 transition"
                   style={{ color: 'var(--muted)' }}
                 >
@@ -76,9 +76,9 @@ export default function TopMatches({ sosId, lang }: { sosId: string; lang: 'en' 
               </div>
             </div>
             {openWhy === m.id && (
-              <ul className="mt-1.5 space-y-0.5 pl-9" aria-label={lang === 'en' ? `Why ${m.name} ranks at ${m.score}` : `${m.name} کے اسکور کی وجوہات`}>
+              <ul className="mt-1.5 space-y-0.5 pl-9" aria-label={`Why ${m.name} ranks at ${m.score}`}>
                 {m.reasons.map((r, i) => (
-                  <li key={i} className="text-[10px]" style={{ color: 'var(--muted)' }}>{r}</li>
+                  <li key={i} className="text-xs" style={{ color: 'var(--muted)' }}>{r}</li>
                 ))}
               </ul>
             )}

@@ -23,14 +23,14 @@ interface AcceptedInfo {
 }
 
 interface DonorInboxProps {
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
   onChanged?: () => void;
 }
 
 // Contact requests waiting on THIS donor (proven by their login session).
 // The requester's number stays masked until the donor accepts — then both
 // sides get each other's real number (first-accept-wins, audit-logged).
-export default function DonorInbox({ lang, onChanged }: DonorInboxProps) {
+export default function DonorInbox({ lang = 'en', onChanged }: DonorInboxProps) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);

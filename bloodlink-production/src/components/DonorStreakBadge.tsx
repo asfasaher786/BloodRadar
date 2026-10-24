@@ -7,10 +7,10 @@ interface DonorStreakBadgeProps {
   donor: Donor;
   onToggleAvailability: (available: boolean) => void;
   onDonorUpdated: (donor: Donor) => void;
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
 }
 
-export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorUpdated, lang }: DonorStreakBadgeProps) {
+export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorUpdated, lang = 'en' }: DonorStreakBadgeProps) {
   const [loading, setLoading] = useState(false);
   const [logging, setLogging] = useState(false);
   const [logError, setLogError] = useState("");

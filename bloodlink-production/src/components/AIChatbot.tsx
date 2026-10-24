@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Send, X, AlertOctagon, HelpCircle, HeartHandshake, Volume2, Sparkles, Loader2 } from "lucide-react";
 
 interface AIChatbotProps {
-  lang: 'en' | 'ur';
+  lang?: 'en' | 'ur';
   onEmergencyTriggered: () => void;
 }
 
-export default function AIChatbot({ lang, onEmergencyTriggered }: AIChatbotProps) {
+export default function AIChatbot({ lang = 'en', onEmergencyTriggered }: AIChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
