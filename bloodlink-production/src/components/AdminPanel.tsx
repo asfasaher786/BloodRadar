@@ -163,7 +163,7 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
             <ShieldCheck className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
             Admin Dashboard
           </h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
             Moderation, organization approvals, the North Star metric and honest exports — admin-only.
           </p>
         </div>
@@ -182,12 +182,12 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition ${tab === id ? 'bg-card text-blood shadow-1' : 'text-muted'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition ${tab === id ? 'bg-card text-blood shadow-1' : 'text-muted'}`}
           >
             <Icon className="w-3.5 h-3.5" aria-hidden="true" />
             {label}
             {count !== undefined && count > 0 && (
-              <span className="min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-mono font-bold text-white" style={{ background: 'var(--blood)' }}>
+              <span className="min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-xs font-mono font-bold text-white" style={{ background: 'var(--blood)' }}>
                 {count}
               </span>
             )}
@@ -199,9 +199,9 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
       {tab === "overview" && metrics && (
         <div className="space-y-3">
           <div className="p-4 rounded-xl" style={{ background: 'var(--blood)', color: 'white' }}>
-            <div className="text-[10px] font-mono font-bold tracking-widest uppercase opacity-80">North Star · units delivered</div>
+            <div className="text-xs font-mono font-bold tracking-widest uppercase opacity-80">North Star · units delivered</div>
             <div className="font-display font-black text-3xl mt-1">{metrics.northStar.unitsDeliveredReal}</div>
-            <div className="text-[11px] mt-1 opacity-90">
+            <div className="text-xs mt-1 opacity-90">
               units of blood delivered through fulfilled requests (real records only).
               {metrics.northStar.unitsDeliveredIncludingSample !== metrics.northStar.unitsDeliveredReal && (
                 <> Including sample data: <span className="font-bold">{metrics.northStar.unitsDeliveredIncludingSample}</span>.</>
@@ -217,11 +217,11 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
             ].map(({ label, value }) => (
               <div key={label} className="p-3 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
                 <div className="font-display font-bold text-lg" style={{ color: 'var(--ink)' }}>{value}</div>
-                <div className="text-[10px] mt-0.5" style={{ color: 'var(--muted)' }}>{label}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{label}</div>
               </div>
             ))}
           </div>
-          <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
             Median time-to-first-contact (from real accepted donor responses): {formatMs(metrics.medianTimeToFirstContactMs)}.
           </p>
         </div>
@@ -236,12 +236,12 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
           {reported.map(sos => (
             <div key={sos.id} className="p-3.5 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--warn)' }}>
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[11px] font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-display font-black shrink-0" style={{ background: 'var(--blood)' }}>
                   {sos.bloodGroup}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>{sos.patientName}</div>
-                  <div className="text-[10px]" style={{ color: 'var(--muted)' }}>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>
                     {sos.hospitalName || "Hospital not specified"} · {sos.status} · requester {sos.contactPhone}
                   </div>
                 </div>
@@ -249,7 +249,7 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
               </div>
               <ul className="mb-3 space-y-1">
                 {sos.reports.map((r, i) => (
-                  <li key={i} className="text-[10px]" style={{ color: 'var(--warn-ink)' }}>
+                  <li key={i} className="text-xs" style={{ color: 'var(--warn-ink)' }}>
                     “{r.reason}” <span className="opacity-60">— {new Date(r.at).toLocaleString()}</span>
                   </li>
                 ))}
@@ -277,7 +277,7 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
             <div key={org.id} className="p-3.5 rounded-xl border flex flex-wrap items-center gap-2" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>{org.name}</div>
-                <div className="text-[10px]" style={{ color: 'var(--muted)' }}>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>
                   {org.type === "hospital" ? "Hospital blood bank" : "NGO"} · {org.city}{org.hospitalName ? ` · ${org.hospitalName}` : ""} · owner {org.contactPhone}
                 </div>
               </div>
@@ -302,7 +302,7 @@ export default function AdminPanel({ onDataChanged }: { onDataChanged: () => voi
       {tab === "audit" && (
         <ul className="space-y-1.5 max-h-96 overflow-y-auto">
           {audit.map(e => (
-            <li key={e.id} className="text-[10px] p-2.5 rounded-lg flex items-start gap-2" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
+            <li key={e.id} className="text-xs p-2.5 rounded-lg flex items-start gap-2" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
               <span className="font-mono font-bold shrink-0" style={{ color: 'var(--ink)' }}>{e.action}</span>
               <span className="min-w-0 flex-1 truncate">{e.detail || ""}</span>
               <span className="font-mono shrink-0 opacity-70">{new Date(e.timestamp).toLocaleTimeString()}</span>

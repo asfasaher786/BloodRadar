@@ -199,7 +199,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         </div>
         <div>
           <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>Donor Alerts</h2>
-          <p className="text-[10px] font-mono" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
             When a new request matches your blood group and city, we alert you here.
           </p>
         </div>
@@ -223,7 +223,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
           <input type="checkbox" className="w-4 h-4 accent-[#C41230]" checked={prefs.smsAlerts} onChange={() => toggle("smsAlerts")} />
         </label>
         {smsProvider === "console" && (
-          <p className="text-[10px] font-mono" style={{ color: 'var(--warn-ink)' }}>
+          <p className="text-xs font-mono" style={{ color: 'var(--warn-ink)' }}>
             Test mode: SMS messages are printed to the server log, not actually sent. A live SMS provider is configured at deployment.
           </p>
         )}
@@ -248,7 +248,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
                   value={prefs.quietStart}
                   onChange={(e) => setPrefs({ ...prefs, quietStart: e.target.value })}
                 />
-                <span className="text-[10px]" style={{ color: 'var(--muted)' }}>to</span>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>to</span>
                 <input
                   type="time"
                   aria-label="Quiet hours end"
@@ -259,7 +259,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
                 />
               </div>
               <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <span className="text-[10px]" style={{ color: 'var(--muted)' }}>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>
                   Let Immediate (SOS) requests through during quiet hours
                 </span>
                 <input type="checkbox" className="w-4 h-4 accent-[#C41230]" checked={prefs.allowImmediateDuringQuiet} onChange={() => toggle("allowImmediateDuringQuiet")} />
@@ -281,7 +281,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
                   <button
                     onClick={unsubscribePush}
                     disabled={busy}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition disabled:opacity-50"
                     style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
                   >
                     <BellOff className="w-3 h-3" /> Turn off
@@ -290,14 +290,14 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
                   <button
                     onClick={subscribePush}
                     disabled={busy || pushState === "denied" || pushState === "unsupported"}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold text-white transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
                     style={{ background: 'var(--blood)' }}
                   >
                     {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />} Turn on
                   </button>
                 )}
               </div>
-              <p className="text-[10px]" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 {pushState === "subscribed" && "On — this browser will notify you about matching requests even when the tab is closed."}
                 {pushState === "denied" && "Notifications are blocked in this browser. Allow them in the browser settings to enable this."}
                 {pushState === "unsupported" && "This browser doesn't support web push."}
@@ -305,7 +305,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
               </p>
             </>
           ) : (
-            <p className="text-[10px]" style={{ color: 'var(--muted)' }}>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
               <Bell className="w-3 h-3 inline mr-1" />
               Web push isn't configured on this deployment yet, so browser notifications are unavailable. In-app and SMS alerts still work.
             </p>
@@ -322,11 +322,11 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
           Save alert settings
         </button>
         {prefs.quietStart === prefs.quietEnd && (
-          <p className="text-[10px]" style={{ color: 'var(--blood)' }}>Quiet hours start and end can't be the same time.</p>
+          <p className="text-xs" style={{ color: 'var(--blood)' }}>Quiet hours start and end can't be the same time.</p>
         )}
 
         {msg && (
-          <p className="text-[10px] font-semibold" role="status" style={{ color: msg.ok ? 'var(--safe-ink)' : 'var(--blood)' }}>
+          <p className="text-xs font-semibold" role="status" style={{ color: msg.ok ? 'var(--safe-ink)' : 'var(--blood)' }}>
             {msg.text}
           </p>
         )}
@@ -335,18 +335,18 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         {alerts.length > 0 && (
           <div className="mt-1 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center justify-between gap-2 mb-1.5">
-              <span className="text-[10px] font-mono font-bold tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
+              <span className="text-xs font-mono font-bold tracking-wider uppercase" style={{ color: 'var(--muted)' }}>
                 Recent alerts
               </span>
               {alerts.some(a => !a.read) && (
-                <button onClick={markAlertsRead} className="text-[10px] font-semibold underline transition" style={{ color: 'var(--muted)' }}>
+                <button onClick={markAlertsRead} className="text-xs font-semibold underline transition" style={{ color: 'var(--muted)' }}>
                   Mark all read
                 </button>
               )}
             </div>
             <ul className="space-y-1.5">
               {alerts.slice(0, 5).map(a => (
-                <li key={a.id} className={`p-2 rounded-lg border-l-2 text-[10px] leading-relaxed ${a.read ? "opacity-60" : ""}`} style={{ background: 'var(--surface)', borderLeftColor: a.read ? 'var(--border)' : 'var(--blood)' }}>
+                <li key={a.id} className={`p-2 rounded-lg border-l-2 text-xs leading-relaxed ${a.read ? "opacity-60" : ""}`} style={{ background: 'var(--surface)', borderLeftColor: a.read ? 'var(--border)' : 'var(--blood)' }}>
                   <span className="font-bold" style={{ color: 'var(--ink)' }}>{a.title}</span>
                   <br />
                   <span style={{ color: 'var(--muted)' }}>{a.message}</span>

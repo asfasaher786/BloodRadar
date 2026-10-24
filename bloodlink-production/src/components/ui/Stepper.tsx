@@ -45,7 +45,7 @@ export default function Stepper({ steps, current, children, orientation = "horiz
               )}
               <span
                 aria-hidden="true"
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0
                   ${state === "done" ? "bg-blood text-white" : state === "current" ? "bg-blood-soft text-blood border-2 border-blood" : "bg-surface-2 text-muted border border-border"}`}
               >
                 {state === "done" ? <Check className="w-3.5 h-3.5" /> : i + 1}
@@ -54,7 +54,7 @@ export default function Stepper({ steps, current, children, orientation = "horiz
                 <span className={`block text-xs font-semibold truncate ${state === "current" ? "text-blood" : state === "done" ? "text-ink" : "text-muted"}`}>
                   {step.title}
                 </span>
-                {step.caption && <span className="block text-[10px] text-muted truncate">{step.caption}</span>}
+                {step.caption && <span className="block text-xs text-muted truncate">{step.caption}</span>}
               </span>
             </li>
           );

@@ -158,10 +158,10 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
 
   const buildShareMessage = (req: any, myPhone: string): string => {
     const name = req.patientName && !req.patientName.startsWith("Patient (") ? req.patientName : "a patient";
-    return `⚠️ URGENT — ${req.bloodGroup} Blood Needed ⚠️\n` +
+    return `URGENT — ${req.bloodGroup} Blood Needed\n` +
       `${name} urgently needs ${req.bloodGroup} blood (${req.unitsNeeded} unit${req.unitsNeeded > 1 ? "s" : ""}) at ${req.hospitalName}, ${req.city}.\n` +
-      `📞 Contact: ${myPhone}\n` +
-      `Please share/donate if you can. Every minute counts. 🙏`;
+      `Contact: ${myPhone}\n` +
+      `Please share or donate if you can. Every minute counts.`;
   };
 
   const validatePhone = (value: string): string => {

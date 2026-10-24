@@ -22,7 +22,7 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 export default function Badge({ tone = "neutral", icon, mono = false, className = "", children, ...rest }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold
         ${mono ? "font-mono" : "font-sans"} ${TONES[tone]} ${className}`}
       {...rest}
     >
