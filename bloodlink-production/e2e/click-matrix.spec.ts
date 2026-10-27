@@ -8,9 +8,10 @@ import { registerDonorViaUi, createSosViaUi, uniquePhone, readDevOtp } from "./h
 // accept/fulfil, admin moderation, chatbot messages, offline banner) are
 // cross-referenced in CLICK-MATRIX.md rather than duplicated.
 //
-// Viewport gating: the notification bell and ticker require a desktop
-// header (bell is `hidden md:flex`), and the mobile menu requires the
-// narrow layout, so those tests self-skip on the wrong viewport.
+// Viewport gating: the notification bell and ticker render on every
+// viewport (the bell appears only while something is unread), and the
+// mobile menu requires the narrow layout, so those tests self-skip on
+// the wrong viewport.
 
 test.describe("click matrix — header & chrome", () => {
   test("skip-to-content link: Tab reveals it, Enter jumps to main", async ({ page }) => {
@@ -87,7 +88,8 @@ test.describe("click matrix — header & chrome", () => {
     await expect(ticker).toBeVisible({ timeout: 20_000 });
     await expect(bell).toBeVisible({ timeout: 20_000 });
 
-    // Bell click is a smooth-scroll to the board: no state change, no crash.
+    // Bell click opens the notifications panel; the bell itself must stay
+    // visible (the panel lives and dies with the unread state).
     await bell.click();
     await expect(bell).toBeVisible();
     await expect(ticker).toBeVisible();
@@ -114,6 +116,39 @@ test.describe("click matrix — header & chrome", () => {
 
     await donorContext.close();
     await reqContext.close();
+  });
+
+  test("bell opens the notifications panel: SOS row navigates, mark-all-read persists", async ({ page }) => {
+    // Same webkit budget as the ticker test (SOS creation + panel steps).
+    test.setTimeout(180_000);
+    await page.goto("/");
+
+    // Own SOS → own unread public notification, independent of the ticker
+    // test's Dismiss (which clears all unread server-side).
+    await createSosViaUi(page, { phone: uniquePhone(), bloodGroup: "B+" });
+
+    // Bell appears once the SOS broadcast lands over SSE/poll.
+    const bell = page.locator('button[aria-label^="Notifications — "]');
+    await expect(bell).toBeVisible({ timeout: 20_000 });
+    await bell.click();
+
+    // Panel opens with the feed; emergency rows link to the live board.
+    const panel = page.locator("#notifications-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("Notifications");
+    const sosRow = panel.locator("a[href='#emergencies-board']").first();
+    await expect(sosRow).toBeVisible();
+    await sosRow.click();
+    await expect(page).toHaveURL(/#emergencies-board$/);
+    await expect(panel).toHaveCount(0); // navigating closes the panel
+
+    // Mark all read: server-side read-all, bell vanishes and stays gone.
+    await bell.click();
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "Mark all as read" }).click();
+    await expect(page.locator('button[aria-label^="Notifications — "]')).toHaveCount(0, { timeout: 10_000 });
+    await page.reload();
+    await expect(page.locator('button[aria-label^="Notifications — "]')).toHaveCount(0);
   });
 });
 

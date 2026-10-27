@@ -16,7 +16,10 @@ mechanism, noted inline.
 | 1 | Skip-to-content link | Focus + Enter | Link becomes visible on focus; Enter jumps to `#main-content` | `click-matrix.spec` → "skip-to-content link" |
 | 2 | Emergency ticker — Dismiss | Click | Marks all notifications read server-side; ticker and bell disappear, stay gone after reload | `click-matrix.spec` → "ticker: X hides it…" |
 | 3 | Emergency ticker — X | Click | Hides the banner only; unread count (bell) untouched | same test |
-| 4 | Notifications bell (desktop, unread > 0) | Click | Smooth-scrolls to the SOS board; no state corruption | same test |
+| 4 | Notifications bell (any viewport, unread > 0) | Click | Opens the notifications panel (dropdown) with the live feed; bell itself stays visible | `click-matrix.spec` → "ticker: X hides it…" |
+| 4a | Notifications panel — open | Click (bell) | Panel `#notifications-panel` appears with heading and feed rows (newest first) | `click-matrix.spec` → "bell opens the notifications panel…" |
+| 4b | Notifications panel — emergency row | Click | Navigates to `#emergencies-board` and closes the panel | same test |
+| 4c | Notifications panel — Mark all as read | Click | Real POST `/api/notifications/read-all`; bell and ticker vanish and stay gone after reload | same test |
 | 5 | Mobile menu button | Click | `aria-expanded` false → true, label flips to "Close menu" | `click-matrix.spec` → "mobile menu opens…" |
 | 6 | Mobile menu anchors ×4 | Click | Navigates to the section and closes the menu | same test |
 | 7 | Hero CTA "View Live Emergencies" | Click | URL hash → `#emergencies-board` | `click-matrix.spec` → "hero CTAs" |
@@ -54,8 +57,8 @@ mechanism, noted inline.
 | 35 | Protected-number button | Click | Label swaps to "Use SOS to connect", reverts after 3 s; number stays masked | `click-matrix.spec` |
 | 36 | Reviews toggle | Click | Testimonial drawer opens/closes | `click-matrix.spec` |
 | 37 | Star rating buttons ×5 | Click | Rating updates (`aria-pressed`) | `click-matrix.spec` |
-| 38 | Review form + Submit Feedback | Fill + click | Real POST `/api/donors/:id/reviews`; success overlay shown | `click-matrix.spec` |
-| 39 | Success overlay — Okay | Click | Returns to the form | `click-matrix.spec` |
+| 38 | Review form + Submit Feedback | Fill + click | Real POST `/api/donors/:id/reviews`; in-flow success block shown | `click-matrix.spec` |
+| 39 | Success block — Okay | Click | Returns to the form | `click-matrix.spec` |
 | 40 | Register stepper (name, phone, group, city, location, eligibility, consent, OTP) | Full UI flow | Donor created, verified, streak card appears | `donor.spec` via shared helper |
 | 41 | Log Donation | Click | Records donation; immediate repeat refused by the 90-day rule | `donor.spec` |
 | 42 | Availability toggle (streak card) | Click | AVAILABLE ↔ OFFLINE | `donor.spec` |
