@@ -538,12 +538,12 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                             )}
 
                             {reviewSuccess ? (
-                              <div className="absolute inset-0 bg-[var(--safe)]/8/95 flex flex-col items-center justify-center p-3 rounded-xl text-center border border-emerald-250">
+                              <div role="status" className="py-4 px-3 rounded-xl bg-[var(--safe)]/8/95 text-center border border-emerald-250">
                                 <div className="relative flex items-center justify-center">
-                                  <span className="absolute inline-flex h-14 w-14 rounded-full border-2 border-emerald-300 success-ripple" aria-hidden="true" />
-                                  <CheckCircle className="w-7 h-7 text-[var(--safe)] mb-1.5" />
+                                  <span className="absolute inline-flex h-14 w-14 rounded-full border-2 border-emerald-300 success-ripple pointer-events-none" aria-hidden="true" />
+                                  <CheckCircle className="w-7 h-7 text-[var(--safe)]" />
                                 </div>
-                                <p className="text-xs font-bold text-emerald-800">{reviewSuccess}</p>
+                                <p className="text-xs font-bold text-emerald-800 mt-2">{reviewSuccess}</p>
                                 <button
                                   onClick={() => setReviewSuccess(null)}
                                   className="mt-2.5 px-3 py-1 bg-[var(--card)] border border-emerald-250 hover:bg-[var(--safe)]/8 text-[var(--safe-ink)] text-xs font-bold rounded-lg transition cursor-pointer"
@@ -668,7 +668,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
           {registerSuccess ? (
             <div className="p-5 bg-[var(--safe)]/8/70 border border-[var(--safe)]/30 rounded-2xl text-center space-y-3">
               <div className="relative flex items-center justify-center">
-                <span className="absolute inline-flex h-16 w-16 rounded-full border-2 border-emerald-300 success-ripple" aria-hidden="true" />
+                <span className="absolute inline-flex h-16 w-16 rounded-full border-2 border-emerald-300 success-ripple pointer-events-none" aria-hidden="true" />
                 <CheckCircle className="w-10 h-10 text-emerald-605 mx-auto" />
               </div>
               <h4 className="font-bold text-emerald-900 text-sm">

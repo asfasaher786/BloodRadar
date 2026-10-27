@@ -339,7 +339,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
       {submitPhase === 'success' && mySos && reveal.status !== 'cancelled' && (
         <div role="status" aria-live="polite" className="text-center py-6 fade-in">
           <div className="relative mx-auto w-20 h-20 mb-5">
-            <span className="absolute inset-0 rounded-full border-2 border-blood/30 success-ripple" aria-hidden="true" />
+            <span className="absolute inset-0 rounded-full border-2 border-blood/30 success-ripple pointer-events-none" aria-hidden="true" />
             <span className="absolute inset-0 rounded-full flex items-center justify-center" style={{ background: 'var(--blood-tint)' }}>
               <svg viewBox="0 0 24 24" className="w-9 h-9" aria-hidden="true">
                 <path
