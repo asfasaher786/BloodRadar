@@ -160,15 +160,19 @@ export default function AIChatbot({ onEmergencyTriggered }: AIChatbotProps) {
 
       {/* Entrance-only motion, no exit gating: exit animations stall in
           throttled/background tabs (paused rAF) and leave the panel stuck
-          open — closing must be instant for reliability. */}
+          open — closing must be instant for reliability. Also opacity-only
+          (no y/scale): a stalled transform leaves fractional sub-pixel
+          offsets that make children's boxes oscillate at DPR2 in headless
+          webkit, so Playwright never sees a "stable" click point (#64
+          class of bug — transforms on hit-tested paths are banned). */}
       {isOpen && (
           <motion.div
             id="ai-chatbot-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="BloodRadar Medical Companion chat"
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             className="fixed bottom-24 right-6 w-full max-w-sm md:max-w-md h-[550px] rounded-2.5xl bg-[var(--card)]/95 backdrop-blur-xl border border-[var(--border)] shadow-2xl z-50 flex flex-col overflow-hidden text-[var(--ink)]"
           >
             {/* Header */}
