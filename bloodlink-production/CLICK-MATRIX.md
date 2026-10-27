@@ -99,4 +99,5 @@ mechanism, noted inline.
   element remains untested.
 
 Verified: full suite green on all four browser projects (Chromium, Firefox,
-WebKit, mobile-Chromium 360×740).
+WebKit, mobile-Chromium 360×740) — 45 passed / 7 viewport-gated skips /
+0 failed on the 2026-10-28 FullGo gate (`test-results/.last-run.json`).
