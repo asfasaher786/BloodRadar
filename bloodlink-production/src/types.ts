@@ -128,4 +128,6 @@ export interface RealtimeNotification {
   type: 'emergency' | 'system' | 'badge';
   timestamp: string;
   read: boolean;
+  // Seeded demo rows are flagged by the backend so the UI can label them.
+  isSample?: boolean;
 }

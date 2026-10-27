@@ -100,6 +100,7 @@ export default function App() {
   const [flashSOS, setFlashSOS] = useState(false);
   const [activeDonorTab, setActiveDonorTab] = useState<'search' | 'register'>('search');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [dismissedAlert, setDismissedAlert] = useState(false);
@@ -113,6 +114,8 @@ export default function App() {
   // Mobile sticky bottom bar appears once the hero scrolls out of view.
   const [bottomBarVisible, setBottomBarVisible] = useState(false);
   const alertRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const notifPanelRef = useRef<HTMLDivElement>(null);
   // Snapshot of id→status from the last successful load, so a live update
   // (SSE → loadData) can flash only the cards that actually changed.
   const prevSosRef = useRef<Map<string, string> | null>(null);
@@ -250,6 +253,25 @@ export default function App() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Notifications panel: close on outside press or Escape, like any popover.
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (notifPanelRef.current?.contains(t) || bellRef.current?.contains(t)) return;
+      setNotifOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [notifOpen]);
+
   const handleSOSSuccess = () => { loadData(); scrollToId("emergencies-board"); };
   const handleCampRegistration = async (campId: string) => {
     await fetch(`${API_BASE}/api/camps/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campId }) });
@@ -286,6 +308,9 @@ export default function App() {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const sortedNotifications = [...notifications].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
   const pendingEmergencies = emergencies.filter(e => e.status === 'Pending');
   const activeAlert = notifications.find(n => n.type === 'emergency' && !n.read);
 
@@ -372,7 +397,7 @@ export default function App() {
           className="relative overflow-hidden z-50"
           style={{ background: 'var(--blood)' }}
         >
-            <div className="flex items-center justify-between px-4 py-2 gap-3">
+            <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-2 gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="w-2 h-2 rounded-full bg-white animate-ping" />
@@ -412,30 +437,103 @@ export default function App() {
           </a>
 
           {/* Desktop nav links — native hash navigation (no preventDefault). */}
-          <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-1">
+          <nav aria-label="Main navigation" className="hidden lg:flex flex-1 justify-center items-center gap-0.5 px-2 min-w-0">
             {NAV_LINKS.map(({ label, target, donorTab }) => (
               <a
                 key={label}
                 href={`#${target}`}
                 onClick={() => goToNav(donorTab, target)}
-                className="px-3 py-2 rounded-lg text-sm font-semibold text-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150"
+                className="px-2.5 py-2 rounded-lg text-sm font-semibold text-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150 whitespace-nowrap"
               >
                 {label}
               </a>
             ))}
           </nav>
 
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 shrink-0 relative">
             {unreadCount > 0 && (
-              <button onClick={() => alertRef.current?.scrollIntoView({ behavior: 'smooth' })} aria-label={`Notifications — ${unreadCount} unread`} className="relative p-2 rounded-lg transition hover:bg-surface-2" style={{ background: 'var(--surface-2)' }}>
+              <button
+                ref={bellRef}
+                onClick={() => setNotifOpen(o => !o)}
+                aria-label={`Notifications — ${unreadCount} unread`}
+                aria-expanded={notifOpen}
+                aria-controls="notifications-panel"
+                className="relative p-2 rounded-lg transition hover:bg-surface-2"
+                style={{ background: 'var(--surface-2)' }}
+              >
                 <Bell className="w-4 h-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
                 <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-white text-xs font-bold font-mono" style={{ background: 'var(--blood)' }} aria-hidden="true">
                   {unreadCount}
                 </span>
               </button>
             )}
+
+            {/* Notifications panel — real feed from /api/notifications; the bell
+                only exists while something is unread, so the panel lives and
+                dies with it (E2E contract: bell must go at 0 unread). */}
+            {notifOpen && unreadCount > 0 && (
+              <div
+                id="notifications-panel"
+                ref={notifPanelRef}
+                role="region"
+                aria-label="Notifications"
+                className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border shadow-3 overflow-hidden"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+              >
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                  <span className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Notifications</span>
+                  <button
+                    onClick={() => { setNotifOpen(false); readAllNotifications(); }}
+                    className="text-xs font-bold underline underline-offset-2 hover:opacity-75 transition"
+                    style={{ color: 'var(--blood)' }}
+                  >
+                    Mark all as read
+                  </button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {sortedNotifications.length === 0 ? (
+                    <p className="px-3 py-6 text-xs text-center" style={{ color: 'var(--muted)' }}>
+                      No notifications yet — new SOS broadcasts appear here.
+                    </p>
+                  ) : (
+                    sortedNotifications.map(n => {
+                      const label = n.type === 'emergency' ? 'SOS' : n.type === 'system' ? 'System' : 'Badge';
+                      const inner = (
+                        <>
+                          <div className="flex items-center gap-1.5">
+                            {!n.read && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--blood)' }} aria-hidden="true" />}
+                            <span className="text-xs font-bold uppercase tracking-wide font-mono" style={{ color: 'var(--blood)' }}>{label}</span>
+                            {n.isSample && (
+                              <span className="text-xs font-mono px-1.5 py-0.5 rounded border shrink-0" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+                                Sample data
+                              </span>
+                            )}
+                            <span className="text-xs font-mono ml-auto shrink-0" style={{ color: 'var(--muted)' }}>{timeAgo(n.timestamp)}</span>
+                          </div>
+                          <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--ink)' }}>{n.message}</p>
+                        </>
+                      );
+                      const rowStyle = { borderColor: 'var(--border)' };
+                      const rowClass = n.type === 'emergency'
+                        ? `px-3 py-2.5 border-b transition hover:bg-surface-2 ${!n.read ? '' : 'opacity-60'}`
+                        : `px-3 py-2.5 border-b ${!n.read ? '' : 'opacity-60'}`;
+                      return n.type === 'emergency' ? (
+                        <a key={n.id} href="#emergencies-board" onClick={() => setNotifOpen(false)} className={rowClass} style={rowStyle}>
+                          {inner}
+                        </a>
+                      ) : (
+                        <div key={n.id} className={rowClass} style={rowStyle}>
+                          {inner}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
             {currentUserDonor && (
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+              <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: currentUserDonor.isAvailable ? 'var(--safe)' : 'var(--muted)' }} />
                 <span className="font-medium" style={{ color: 'var(--ink)' }}>{currentUserDonor.name.split(' ')[0]}</span>
                 <span className="font-mono font-bold px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--blood)', color: 'white' }}>{currentUserDonor.bloodGroup}</span>
