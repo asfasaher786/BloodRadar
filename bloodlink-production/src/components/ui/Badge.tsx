@@ -8,7 +8,7 @@ const TONES: Record<BadgeTone, string> = {
   safe: "bg-safe-soft text-safe-ink border-safe/40",
   warn: "bg-warn-soft text-warn-ink border-warn/40",
   gold: "bg-gold-soft text-gold-ink border-gold/40",
-  info: "bg-ink text-white border-ink",
+  info: "bg-ink text-[var(--surface)] border-ink",
 };
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {

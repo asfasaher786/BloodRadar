@@ -790,7 +790,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                               aria-pressed={regCity === city}
                               onClick={() => setRegCity(city)}
                               className={`flex-1 h-12 rounded-xl text-xs font-bold transition-all duration-150
-                                ${regCity === city ? 'bg-ink text-white' : 'bg-surface text-muted border border-border hover:border-ink/40'}`}
+                                ${regCity === city ? 'bg-blood text-white' : 'bg-surface text-muted border border-border hover:border-ink/40'}`}
                             >
                               {city}
                             </button>

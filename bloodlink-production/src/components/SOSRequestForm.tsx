@@ -653,7 +653,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 aria-pressed={city === c}
                 onClick={() => setCity(c)}
                 className={`h-10 px-4 rounded-lg border text-sm font-bold transition-colors duration-150
-                  ${city === c ? "bg-ink text-white border-ink" : "bg-card text-muted border-border hover:border-ink/40"}`}
+                  ${city === c ? "bg-blood text-white border-blood" : "bg-card text-muted border-border hover:border-ink/40"}`}
               >
                 {c}
               </button>
