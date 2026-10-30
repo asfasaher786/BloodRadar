@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { API_BASE } from "../lib/api";
-import { Inbox, CheckCircle2, XCircle, PhoneCall, Loader2, Heart } from "lucide-react";
+import { Inbox, CheckCircle2, XCircle, PhoneCall, Loader2, Heart, RefreshCw } from "lucide-react";
 import Skeleton from "./ui/Skeleton";
 import ListState from "./ui/ListState";
 
@@ -115,7 +115,9 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
   };
 
   const openItems = items.filter(i => i.status === 'open');
-  if (loaded && !loadError && openItems.length === 0 && !acceptedInfo) return null;
+  // The card always renders for a signed-in donor — an invisible inbox was
+  // the "where do I accept?" confusion. Empty state says so honestly and
+  // offers a manual refresh for phones that missed the live update.
 
   return (
     <div id="donor-inbox-card" className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
@@ -123,7 +125,7 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(196,18,48,0.08)', border: '1px solid rgba(196,18,48,0.2)' }}>
           <Inbox className="w-4 h-4" style={{ color: 'var(--blood)' }} />
         </div>
-        <div>
+        <div className="min-w-0">
           <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>
             Contact Requests
           </h2>
@@ -131,6 +133,14 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
             {openItems.length} waiting for your help
           </p>
         </div>
+        <button
+          onClick={loadInbox}
+          aria-label="Refresh requests"
+          className="ml-auto p-2 rounded-lg transition hover:bg-surface-2"
+          style={{ color: 'var(--muted)' }}
+        >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
+        </button>
       </div>
 
       {acceptedInfo && (
@@ -198,6 +208,17 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
           </div>
         ))}
       </div>
+
+      {loaded && !loadError && openItems.length === 0 && !acceptedInfo && (
+        <ListState
+          kind="empty"
+          title="No open requests right now"
+          sub="When a patient in your city needs your blood group, their request appears here. Just opened the app? Tap refresh."
+          actionLabel="Refresh"
+          onAction={loadInbox}
+          className="py-6"
+        />
+      )}
 
       {error && <p className="text-xs mt-2 font-sans" style={{ color: 'var(--danger-text)' }}>{error}</p>}
       {!loaded && (

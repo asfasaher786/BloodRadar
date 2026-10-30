@@ -51,9 +51,50 @@ test.describe("click matrix — header & chrome", () => {
     for (const label of ["Live Emergencies", "Request Blood (SOS)", "Find Donors", "For Organizations"]) {
       await expect(menu.getByRole("link", { name: label, exact: true })).toBeVisible();
     }
+    await expect(menu.getByRole("button", { name: "Log in" })).toBeVisible();
+    // Log in opens the OTP modal and closes the menu; Esc closes the modal
+    // (the shared ui/Modal escape path, exercised through the login modal).
+    await menu.getByRole("button", { name: "Log in" }).click();
+    await expect(page.locator("#login-modal")).toBeVisible();
+    await expect(menu.getByRole("link", { name: "Live Emergencies", exact: true })).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#login-modal")).toHaveCount(0);
+    // The Log in click closed the menu — reopen and finish the anchor contract.
+    await menu.getByRole("button", { name: "Open menu" }).click();
     await menu.getByRole("link", { name: "Request Blood (SOS)", exact: true }).click();
     await expect(page).toHaveURL(/#sos-form$/);
     await expect(menu.getByRole("link", { name: "Live Emergencies", exact: true })).toBeHidden();
+  });
+
+  test("log in modal: phone OTP signs in and the Log in button disappears", async ({ page, viewport }) => {
+    test.skip((viewport?.width ?? 1280) < 768, "the Log in button is desktop-only");
+    await page.goto("/");
+    await page.getByRole("button", { name: "Log in" }).click();
+    const modal = page.locator("#login-modal");
+    await expect(modal).toBeVisible();
+
+    // Phone stage: send a code, then exercise Change number — it must return
+    // to the phone stage with the typed number intact.
+    const firstPhone = uniquePhone();
+    await modal.getByLabel("Phone number").fill(firstPhone);
+    await modal.getByRole("button", { name: "Send verification code" }).click();
+    await expect(modal.getByText(/Test mode — your code/)).toBeVisible({ timeout: 10_000 });
+    await modal.getByRole("button", { name: "Change number" }).click();
+    await expect(modal.getByLabel("Phone number")).toHaveValue(firstPhone);
+
+    // A fresh phone proceeds normally — the cooldown is per-phone.
+    await modal.getByLabel("Phone number").fill(uniquePhone());
+    await modal.getByRole("button", { name: "Send verification code" }).click();
+    const code = await readDevOtp(page);
+    await modal.getByLabel("Verification code").fill(code);
+    await modal.getByRole("button", { name: "Verify & log in" }).click();
+    await expect(page.locator("#login-modal")).toHaveCount(0, { timeout: 10_000 });
+
+    // Signed in: the Log in button is gone, and the session survives a
+    // reload (fresh phone → session without a donor profile, still logged in).
+    await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
   });
 
   test("ticker: X hides it, Dismiss clears unread so bell goes too", async ({ page, browser, viewport }) => {
@@ -241,6 +282,35 @@ test.describe("click matrix — SOS form controls", () => {
     await expect(page.getByText("Marked fulfilled — thank you.")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Done" }).click();
     await expect(page.getByText("Marked fulfilled — thank you.")).toHaveCount(0);
+  });
+});
+
+test.describe("click matrix — donor inbox", () => {
+  test("empty state shows for a fresh donor; refresh and retry stay honest", async ({ page }) => {
+    await page.goto("/");
+    await registerDonorViaUi(page, {
+      name: `E2E Inbox Donor ${Date.now()}`,
+      bloodGroup: "B+",
+      city: "Rawalpindi",
+    });
+
+    // The card must always render for a signed-in donor — an invisible inbox
+    // was the "where do I accept?" confusion.
+    const inbox = page.locator("#donor-inbox-card");
+    await expect(inbox).toBeVisible();
+    await expect(inbox.getByText("No open requests right now")).toBeVisible();
+    await expect(inbox.getByText("0 waiting for your help")).toBeVisible();
+
+    // Refresh performs a real GET: with the endpoint blocked it must surface
+    // the honest error state (empty → error is a real state change).
+    await page.route("**/api/donors/inbox", (route) => route.abort());
+    await inbox.getByRole("button", { name: "Refresh requests" }).click();
+    await expect(inbox.getByText("Couldn't load your requests.")).toBeVisible({ timeout: 10_000 });
+
+    // Try again recovers to the empty state once the endpoint is back.
+    await page.unroute("**/api/donors/inbox");
+    await inbox.getByRole("button", { name: "Try again" }).click();
+    await expect(inbox.getByText("No open requests right now")).toBeVisible({ timeout: 10_000 });
   });
 });
 

@@ -5,12 +5,13 @@ import brandIcon from "./assets/brand-icon.png";
 import { motion, useReducedMotion } from "motion/react";
 import {
   Heart, Droplets, Building2, Calendar, MapPin,
-  Bell, Users, Phone, WifiOff,
+  Bell, Users, Phone, WifiOff, LogIn,
   X, Menu, TrendingUp, Sparkles, CheckCircle2, Lock, Info,
   Clock, Siren, ChevronRight
 } from "lucide-react";
 
 import SOSRequestForm from "./components/SOSRequestForm";
+import LoginModal from "./components/LoginModal";
 import DonorSearch from "./components/DonorSearch";
 import AdminPanel from "./components/AdminPanel";
 import DonorStreakBadge from "./components/DonorStreakBadge";
@@ -98,6 +99,10 @@ export default function App() {
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([]);
   const [currentUserDonor, setCurrentUserDonor] = useState<Donor | null>(null);
   const [meRole, setMeRole] = useState<string>("donor");
+  // Any server session at all (admins/org staff have no donor profile but
+  // are still logged in) — drives the Log in button.
+  const [hasSession, setHasSession] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Hospital | BloodCamp | null>(null);
   const [flashSOS, setFlashSOS] = useState(false);
   const [activeDonorTab, setActiveDonorTab] = useState<'search' | 'register'>('search');
@@ -168,6 +173,9 @@ export default function App() {
         // to know who they are (e.g. to show the Admin Dashboard).
         setMeRole(data.user?.role || "donor");
         setCurrentUserDonor(data.user?.donor || null);
+        setHasSession(true);
+      } else if (meRes.status === 401 || meRes.status === 403) {
+        setHasSession(false);
       }
     } catch (e) {
       console.error("Data load failed:", e);
@@ -190,6 +198,22 @@ export default function App() {
     es.addEventListener("contact-request-accepted", refresh);
     es.addEventListener("contact-request-declined", refresh);
     return () => es.close();
+  }, []);
+
+  // Phones background the tab and silently drop the SSE stream, so a donor
+  // can return to a stale inbox with no way to tell. Refresh whenever the
+  // tab becomes visible again (cheap: the API responses are tiny and the
+  // SSE effect already reloads everything on real events).
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadData();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
 
   // Offline detection: when the network drops, show the "call directly"
@@ -582,6 +606,17 @@ export default function App() {
               </div>
             )}
 
+            {!hasSession && !loading && (
+              <button
+                onClick={() => setLoginOpen(true)}
+                className="hidden md:inline-flex items-center gap-2 h-12 px-4 rounded-xl font-display font-bold text-sm border transition-all duration-150 hover:-translate-y-px"
+                style={{ borderColor: 'var(--border-strong)', color: 'var(--ink)' }}
+              >
+                <LogIn className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+                Log in
+              </button>
+            )}
+
             {/* Request blood — the one always-visible red action. */}
             <a
               href="#sos-form"
@@ -631,6 +666,16 @@ export default function App() {
                 {label}
               </a>
             ))}
+            {!hasSession && !loading && (
+              <button
+                onClick={() => { setMobileMenuOpen(false); setLoginOpen(true); }}
+                className="mt-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition hover:bg-surface-2 text-left"
+                style={{ color: 'var(--ink)', borderTop: '1px solid var(--border)' }}
+              >
+                <LogIn className="w-4 h-4" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+                Log in
+              </button>
+            )}
           </motion.div>
         )}
       </header>
@@ -1148,6 +1193,9 @@ export default function App() {
       <Suspense fallback={null}>
         <AIChatbot onEmergencyTriggered={handleAIEmergencyTrigger} />
       </Suspense>
+
+      {/* Log in — one OTP door for returning donors, admins and org staff. */}
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onLoggedIn={() => loadData()} />
     </div>
   );
 }

@@ -63,25 +63,34 @@ mechanism, noted inline.
 | 41 | Log Donation | Click | Records donation; immediate repeat refused by the 90-day rule | `donor.spec` |
 | 42 | Availability toggle (streak card) | Click | AVAILABLE ↔ OFFLINE | `donor.spec` |
 | 43 | Donor inbox — Accept & Share My Number | Click | First-accept-wins; real numbers exchanged, audit-logged | `matching.spec` |
+| **Returning-donor login & inbox** | | | | |
+| 44 | Header "Log in" button (desktop, signed out) | Click | Opens the login modal; after OTP verify the button disappears and stays gone after reload | `click-matrix.spec` → "log in modal: phone OTP signs in…" |
+| 45 | Mobile menu "Log in" item (signed out) | Click | Menu closes, login modal opens; Esc closes the modal (shared `ui/Modal` escape path) | `click-matrix.spec` → "mobile menu opens…" |
+| 46 | Login modal — Send verification code | Fill + click | Real POST `/api/auth/otp/request`; stage switches to the 6-digit code input with the dev hint (test-only) | `click-matrix.spec` → "log in modal…" |
+| 47 | Login modal — Change number | Click | Returns to the phone stage with the typed number preserved; a fresh phone proceeds (per-phone cooldown honest) | same test |
+| 48 | Login modal — Verify & log in | Fill + click | Real POST `/api/auth/otp/verify`; session cookie set; modal closes; Log in buttons gone and stay gone after reload | same test |
+| 49 | Contact Requests card — empty state | Rendered | Card always visible for a signed-in donor; honest "No open requests right now" + "0 waiting" copy | `click-matrix.spec` → "empty state shows for a fresh donor…" |
+| 50 | Contact Requests — Refresh button | Click | Real GET `/api/donors/inbox`; with the endpoint blocked the honest error state appears (empty → error state change) | same test |
+| 51 | Contact Requests — Try again | Click | Recovers from the error state back to the honest empty state | same test |
 | **Organization portal** | | | | |
-| 44 | Phone input + Send verification code | Fill + click | OTP issued; dev hint shown (test-only) | `click-matrix.spec` + `admin.spec` |
-| 45 | OTP stage — Back | Click | Returns to phone input without state corruption; re-sending the same phone within the 60s cooldown shows the honest wait message | `click-matrix.spec` → "org portal…" |
-| 46 | Verify & continue | Fill + click | Session established (cookie) | `admin.spec`, `donor.spec`, `click-matrix.spec` |
-| 47 | Application form + Submit application | Fill + click | Real POST `/api/orgs/apply`; "In review" state shown | `click-matrix.spec` → "org portal…" |
-| 48 | Check status again | Click | Refreshes status honestly (stays "In review") | same test |
-| 49 | Approved-org actions (post on behalf, Mark Fulfilled / Cancel, Save stock update) | — | Real API handlers; covered by integration tests, not browser-clicked (approval is an admin prerequisite) | `backend/__tests__/orgs.test.ts` |
+| 52 | Phone input + Send verification code | Fill + click | OTP issued; dev hint shown (test-only) | `click-matrix.spec` + `admin.spec` |
+| 53 | OTP stage — Back | Click | Returns to phone input without state corruption; re-sending the same phone within the 60s cooldown shows the honest wait message | `click-matrix.spec` → "org portal…" |
+| 54 | Verify & continue | Fill + click | Session established (cookie) | `admin.spec`, `donor.spec`, `click-matrix.spec` |
+| 55 | Application form + Submit application | Fill + click | Real POST `/api/orgs/apply`; "In review" state shown | `click-matrix.spec` → "org portal…" |
+| 56 | Check status again | Click | Refreshes status honestly (stays "In review") | same test |
+| 57 | Approved-org actions (post on behalf, Mark Fulfilled / Cancel, Save stock update) | — | Real API handlers; covered by integration tests, not browser-clicked (approval is an admin prerequisite) | `backend/__tests__/orgs.test.ts` |
 | **Admin dashboard** | | | | |
-| 50 | Admin tabs | Click | Reported tab shows reports list | `admin.spec` |
-| 51 | Clear reports | Click | Report removed from list | `admin.spec` |
-| 52 | Export CSV | Click | Download event with `bloodradar-sos-YYYY-MM-DD.csv` filename | `admin.spec` |
-| 53 | North Star metric card | Rendered | Honest null or real median — never fabricated | `admin.spec` |
+| 58 | Admin tabs | Click | Reported tab shows reports list | `admin.spec` |
+| 59 | Clear reports | Click | Report removed from list | `admin.spec` |
+| 60 | Export CSV | Click | Download event with `bloodradar-sos-YYYY-MM-DD.csv` filename | `admin.spec` |
+| 61 | North Star metric card | Rendered | Honest null or real median — never fabricated | `admin.spec` |
 | **AI assistant** | | | | |
-| 54 | FAB toggle | Click | `aria-expanded` toggles; dialog opens/closes | `click-matrix.spec` + `chatbot.spec` |
-| 55 | Close assistant | Click | Dialog closes | `click-matrix.spec` |
-| 56 | Escape | Key | Dialog closes | `chatbot.spec` |
-| 57 | Message input + Send | Fill + click | Rules-based answer with honest "no AI connected" badge; emergency phrasing escalates | `chatbot.spec` |
+| 62 | FAB toggle | Click | `aria-expanded` toggles; dialog opens/closes | `click-matrix.spec` + `chatbot.spec` |
+| 63 | Close assistant | Click | Dialog closes | `click-matrix.spec` |
+| 64 | Escape | Key | Dialog closes | `chatbot.spec` |
+| 65 | Message input + Send | Fill + click | Rules-based answer with honest "no AI connected" badge; emergency phrasing escalates | `chatbot.spec` |
 | **SMS channel (API-level)** | | | | |
-| 58 | `/api/sms/incoming` | POST | Creates SOS from strict-format SMS; honest reply when unparseable; 400 on malformed payloads | `sms.spec` |
+| 66 | `/api/sms/incoming` | POST | Creates SOS from strict-format SMS; honest reply when unparseable; 400 on malformed payloads | `sms.spec` |
 
 ## Notes
 
@@ -90,14 +99,21 @@ mechanism, noted inline.
   matching donors → the unread notification arrives over SSE.
 - **Shared-handler groups** (blood chips, filter chips, star ratings) are
   proven once per mechanism; the remaining siblings use identical code paths.
+  Same for the login modal's X and backdrop close, which share the `ui/Modal`
+  close handler proven via Esc (#45), and the mobile menu's "Log in" item,
+  which hides under the same session check as the header button (#44).
 - **Elements verified at API/integration level** rather than by browser click:
-  approved-org portal actions (#49) — they require an admin approval round-trip
-  and are covered by `orgs.test.ts`; SMS webhook (#58) has no UI by design.
+  approved-org portal actions (#57) — they require an admin approval round-trip
+  and are covered by `orgs.test.ts`; SMS webhook (#66) has no UI by design.
 - **Not individually clicked (honest exclusions):** the "Speak last answer"
   assistant button (speechSynthesis — device-dependent; the send/close/escape
   paths are proven), and the logo (not interactive). No other interactive
   element remains untested.
 
 Verified: full suite green on all four browser projects (Chromium, Firefox,
-WebKit, mobile-Chromium 360×740) — 45 passed / 7 viewport-gated skips /
-0 failed on the 2026-10-28 FullGo gate (`test-results/.last-run.json`).
+WebKit, mobile-Chromium 360×740) — 156 passed / 8 viewport-gated skips /
+0 failed on the 2026-10-31 login-UX gate (`test-results/.last-run.json`).
+The click-matrix additions that followed (rows 44–51: menu Log in click,
+Change number, inbox refresh/retry) were re-verified on Chromium +
+mobile-Chromium — 24 passed / 4 skips / 0 failed — with the product code
+unchanged between the two runs, so the 4-project gate stays authoritative.
