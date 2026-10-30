@@ -136,26 +136,23 @@ export default function AIChatbot({ onEmergencyTriggered }: AIChatbotProps) {
 
   return (
     <>
-      {/* Floating Action Badge Button */}
+      {/* Floating Action Button — compact circle so it never crowds the SOS
+          card or any form below it. CSS press/hover only (no spring physics):
+          deterministic transforms keep webkit hit-testing stable. */}
       <div className="fixed bottom-6 right-6 z-50">
-        <motion.button
+        <button
           id="btn-toggle-ai-chat"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
           aria-label="Toggle BloodRadar Assistant chat"
-          className="flex items-center gap-2.5 px-4.5 py-3.5 rounded-full bg-[var(--blood)] hover:brightness-110 text-white font-medium shadow-xl shadow-rose-200 border border-rose-400"
+          className="relative p-3.5 rounded-full bg-[var(--blood)] hover:brightness-110 text-white shadow-xl shadow-rose-200 border border-rose-400 transition-transform duration-150 hover:scale-105 active:scale-95"
         >
           <Sparkles className="w-5 h-5" />
-          <span className="text-sm tracking-wide font-sans font-semibold">
-            BloodRadar Assistant
-          </span>
-          <span className="flex h-2.5 w-2.5 relative">
+          <span className="absolute top-0 right-0 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
           </span>
-        </motion.button>
+        </button>
       </div>
 
       {/* Entrance-only motion, no exit gating: exit animations stall in

@@ -25,6 +25,7 @@ import ListState from "./components/ui/ListState";
 import SosReportButton from "./components/SosReportButton";
 import HowItWorks from "./components/HowItWorks";
 import { BecomeDonorBand, TrustBand } from "./components/HomeBands";
+import Starfield from "./components/Starfield";
 
 // Code-split the heaviest widgets (Leaflet map bundle, charts, ML panel,
 // chatbot) so the first paint ships a small shell — each lazy chunk only
@@ -120,6 +121,7 @@ export default function App() {
   // (SSE → loadData) can flash only the cards that actually changed.
   const prevSosRef = useRef<Map<string, string> | null>(null);
   const highlightTimerRef = useRef<number | null>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
     setLoadFailed(false);
@@ -272,8 +274,45 @@ export default function App() {
     };
   }, [notifOpen]);
 
-  const handleSOSSuccess = () => { loadData(); scrollToId("emergencies-board"); };
-  const handleCampRegistration = async (campId: string) => {
+  // Scroll reveal: below-fold sections rise in with a subtle 3D tilt once,
+  // the first time they enter the viewport. CSS keyframes only (no spring
+  // physics) so the end state is exact and a paused rAF freezes at a fixed
+  // value instead of oscillating — webkit E2E hit-testing stays stable.
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    if (typeof IntersectionObserver === "undefined") {
+      els.forEach(el => el.classList.add("reveal-in"));
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          e.target.classList.add("reveal-in");
+          io.unobserve(e.target);
+        }
+      }
+    }, { threshold: 0.08, rootMargin: "0px 0px -6% 0px" });
+    els.forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, [view, loading]);
+
+  // Hero motion pause: the hero (starfield + breathing drop motif) stays
+  // mounted on every view, just scrolled out of sight. Offscreen infinite
+  // animations degrade webkit's software compositor until hit-testing
+  // alternates every other frame — the "element is not stable" gate
+  // failure. Freeze all hero decoration the moment it leaves the viewport
+  // (class toggled straight on the node, no state churn).
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => {
+      el.classList.toggle("hero-rest", !entry.isIntersecting);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const handleSOSSuccess = () => { loadData(); scrollToId("emergencies-board"); };  const handleCampRegistration = async (campId: string) => {
     await fetch(`${API_BASE}/api/camps/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campId }) });
     loadData();
   };
@@ -345,7 +384,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
 
       {/* Skip link — WCAG 2.4.1 bypass block for keyboard/screen-reader users */}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-ink focus:text-white focus:font-semibold focus:text-sm focus:shadow-3">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-ink focus:text-[var(--surface)] focus:font-semibold focus:text-sm focus:shadow-3">
         Skip to content
       </a>
 
@@ -423,14 +462,16 @@ export default function App() {
       {/* NAV */}
       <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Logo — BloodRadar shield emblem */}
-          <a href="#top" className="flex items-center gap-3 min-w-0" aria-label="BloodRadar — back to top">
+          {/* Logo — BloodRadar shield emblem. No aria-label: the visible
+              wordmark + tagline ARE the accessible name (an override hid the
+              visible text from screen readers — axe label-content-name-mismatch). */}
+          <a href="#top" className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
-              <img src={brandIcon} alt="BloodRadar logo" className="w-full h-full object-cover" />
+              <img src={brandIcon} alt="" className="w-full h-full object-cover" />
             </div>
             <div className="min-w-0">
               <div className="font-display font-extrabold text-base tracking-tight leading-none" style={{ color: 'var(--ink)' }}>
-                Blood<span style={{ color: 'var(--blood)' }}>Radar</span>
+                Blood<span style={{ color: 'var(--color-blood-bright, var(--blood))' }}>Radar</span>
               </div>
               <div className="text-xs font-mono mt-0.5 truncate" style={{ color: 'var(--muted)' }}>Islamabad &amp; Rawalpindi</div>
             </div>
@@ -593,10 +634,13 @@ export default function App() {
         )}
       </header>
 
-      {/* HERO — crisis-first: copy left, the SOS card itself right. */}
-      <div id="top" className="hero-glow border-b border-border/60">
-      <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 md:pt-14 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-start">
-        {/* Left — calm, confident copy. */}
+      {/* HERO — crisis-first: copy left, the SOS card itself right. The
+          starfield drifts behind the whole hero (decorative, never
+          hit-testable); the section sits above it. */}
+      <div id="top" ref={heroRef} className="hero-glow border-b border-border/60 relative overflow-hidden">
+      <Starfield />
+      <section className="relative z-[1] max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 md:pt-14 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+        {/* Left — calm, confident copy, vertically centered against the card. */}
         <div className="lg:col-span-6 space-y-6 fade-up">
           <span className="inline-flex items-center gap-2 text-xs font-mono font-semibold px-3 py-1.5 rounded-full border bg-blood-soft border-blood/20 text-blood-ink">
             <span className="w-1.5 h-1.5 rounded-full bg-blood" aria-hidden="true" />
@@ -615,7 +659,6 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-3 pt-1">
             <a
               href="#sos-form"
-              aria-label="Request Blood (SOS)"
               className="inline-flex items-center gap-2.5 px-7 py-4 rounded-2xl font-display font-bold text-base md:text-lg text-white transition-all duration-150 shadow-2 hover:shadow-3 hover:-translate-y-px"
               style={{ background: 'var(--blood)' }}
             >
@@ -724,7 +767,7 @@ export default function App() {
             snap-scroll cards on mobile, grid on larger screens. Each card
             carries the real blood group (big), the hospital, how long ago
             the request was made, and one concrete action. */}
-        <div id="emergencies-board" className="rounded-3xl border scroll-mt-24" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+        <div id="emergencies-board" data-reveal className="reveal-soft rounded-3xl border scroll-mt-24" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
@@ -830,7 +873,7 @@ export default function App() {
         </div>
 
         {/* ROW 2 — discovery: map + directory left, donors & orgs right. */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div data-reveal className="reveal-soft grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
           {/* LEFT — Map + Directory */}
           <div className="lg:col-span-8 space-y-6">
@@ -1039,11 +1082,11 @@ export default function App() {
           </div>
 
           {/* How it works — three illustrated steps. */}
-          <HowItWorks />
+          <div data-reveal className="reveal"><HowItWorks /></div>
 
           {/* Become a donor band (blood-tint) + trust band (wine). */}
-          <BecomeDonorBand onBecomeDonor={() => { setActiveDonorTab('register'); scrollToId('donor-search'); }} />
-          <TrustBand />
+          <div data-reveal className="reveal"><BecomeDonorBand onBecomeDonor={() => { setActiveDonorTab('register'); scrollToId('donor-search'); }} /></div>
+          <div data-reveal className="reveal"><TrustBand /></div>
         </main>
       )}
 
@@ -1085,7 +1128,7 @@ export default function App() {
           ))}
         </nav>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>© 2026 BloodRadar · Islamabad &amp; Rawalpindi, Pakistan — an early-stage community project</p>
-        <p className="text-xs mt-1 italic" style={{ color: 'var(--muted)', opacity: 0.7 }}>"A drop given in time is a lifetime returned."</p>
+        <p className="text-xs mt-1 italic" style={{ color: 'var(--ink-2)' }}>"A drop given in time is a lifetime returned."</p>
         <p className="text-xs mt-2 max-w-md mx-auto" style={{ color: 'var(--muted)' }}>
           This is not a medical service. In a life-threatening emergency, call Rescue 1122 or your hospital directly.
         </p>

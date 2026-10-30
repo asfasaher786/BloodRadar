@@ -120,6 +120,11 @@
     --color-border-strong: #574B54;
     --color-blood-tint: #35121B;
     --color-blood-soft: #35121B;
+    /* Dark crimson is unreadable on the dark tint — lift the text tones.
+       --color-blood-ink: error/notice text on tint/card/surface.
+       --color-blood-bright: the wordmark "Radar" accent on dark surfaces. */
+    --color-blood-ink: #FF9DAE;
+    --color-blood-bright: #FF8093;
     --color-safe-tint: #0E2A20;
     --color-safe-soft: #0E2A20;
     --color-warn-tint: #2B2008;
@@ -180,6 +185,80 @@ h3, h4 { letter-spacing: -0.02em; }
     linear-gradient(140deg, var(--color-blood), var(--color-blood-dark) 60%, var(--color-blood-hover)) border-box;
   box-shadow: var(--shadow-sos);
 }
+/* Dark mode: the card surface must separate from the page background, not
+   melt into it — lighter paper plus a soft crimson halo behind the ring. */
+@media (prefers-color-scheme: dark) {
+  .sos-card {
+    background:
+      linear-gradient(#251B20, #251B20) padding-box,
+      linear-gradient(140deg, var(--color-blood), var(--color-blood-dark) 60%, var(--color-blood-hover)) border-box;
+    box-shadow: var(--shadow-sos), 0 0 56px rgb(196 18 48 / 0.12);
+  }
+}
+
+/* ── Hero starfield ─────────────────────────────────────────────────────── */
+/* Decorative drifting particles behind the hero only. Never hit-testable,
+   invisible to screen readers, and switched off entirely for reduced
+   motion. Distances use vh so a star crosses the whole hero, not its own
+   2–3px height. */
+.starfield {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.starfield span {
+  position: absolute;
+  top: 0;
+  border-radius: 9999px;
+  opacity: 0;
+  animation-name: star-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+  /* Paused by Starfield's IntersectionObserver (--star-play) the moment
+     the hero scrolls out of view — offscreen compositor layers were the
+     webkit "element is not stable" root cause. */
+  animation-play-state: var(--star-play, running);
+}
+@keyframes star-drift {
+  0% { transform: translate3d(0, -8vh, 0); opacity: 0; }
+  6% { opacity: var(--star-o, 0.5); }
+  94% { opacity: var(--star-o, 0.5); }
+  100% { transform: translate3d(0, 105vh, 0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .starfield { display: none; }
+}
+
+/* ── Scroll reveal ──────────────────────────────────────────────────────── */
+/* Sections below the fold rise in with a subtle 3D tilt, once, when they
+   first enter the viewport. CSS keyframes only (no spring physics): the
+   end state is exact, so a paused rAF freezes mid-flight at a fixed value
+   instead of oscillating — webkit E2E hit-testing stays deterministic.
+   The 3D keyframes END at transform: none (interpolated by matrix
+   decomposition): no perspective containing block lingers over the layout,
+   which is what broke webkit hit-testing stability on interactive sections.
+   Containers holding click targets use .reveal-soft — opacity only, so a
+   mid-entrance click can never miss because the box never moves. */
+.reveal, .reveal-soft { opacity: 0; }
+.reveal.reveal-in { animation: reveal-3d 700ms var(--ease-standard) forwards; }
+.reveal-soft.reveal-in { animation: reveal-fade 600ms var(--ease-standard) forwards; }
+@keyframes reveal-3d {
+  from {
+    opacity: 0;
+    transform: perspective(900px) translateY(28px) rotateX(5deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes reveal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 /* Cards: paper-white, 1px border, inner highlight, shadow only on hover. */
 .brand-card {
@@ -232,6 +311,16 @@ h3, h4 { letter-spacing: -0.02em; }
 }
 .drop-breathe { animation: drop-breathe 4s ease-in-out infinite; }
 
+/* When the hero scrolls out of view (App toggles .hero-rest on #top),
+   freeze every decorative hero animation — same webkit-compositor rationale
+   as the starfield pause above. The hero stays mounted on all views, so
+   these must not run while offscreen. */
+.hero-rest .drop-breathe,
+.hero-rest .ring-ping,
+.hero-rest .ring-ping-delay {
+  animation-play-state: paused;
+}
+
 /* Success check draw-in + single ripple. */
 @keyframes check-draw {
   from { stroke-dashoffset: 48; }
@@ -281,6 +370,20 @@ h3, h4 { letter-spacing: -0.02em; }
 .scale-in { animation: scale-in var(--duration-base) var(--ease-standard) forwards; }
 .sos-ring { animation: sos-flash 1.2s var(--ease-standard) forwards; }
 .live-highlight { animation: live-highlight 1.2s var(--ease-standard); }
+
+/* ── In-page scrollers: no anchoring, no smooth internal scrolls ────────── */
+/* html has scroll-behavior: smooth for the section anchor nav. WebKit then
+   applies SMOOTH scrolls to overflow-anchor adjustments inside in-page
+   scrollers too; the animated adjustment never converges and flips the
+   content by 1px every other frame — the "element is not stable" E2E
+   failure on the donor-list reviews Okay button (period-2 rect alternation,
+   proven via rAF rect sampling). In-page scrollers don't need anchoring
+   (content grows downward) and should scroll instantly for deterministic
+   hit-testing. */
+[class*="max-h-"], .overflow-y-auto {
+  overflow-anchor: none;
+  scroll-behavior: auto;
+}
 
 /* Skeleton loader — used by <Skeleton/> and loading states. */
 .skeleton {
