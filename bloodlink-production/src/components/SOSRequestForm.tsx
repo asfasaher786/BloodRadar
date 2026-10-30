@@ -530,7 +530,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
       )}
 
       {submitPhase !== 'success' && (
-      <form onSubmit={handleSubmit} className="space-y-5 text-sm">
+      <form onSubmit={handleSubmit} className="space-y-4 text-sm">
         {error && (
           <div className="p-3 rounded-xl flex items-center gap-2 text-sm border" role="alert" style={{ background: 'var(--blood-tint)', borderColor: 'rgb(196 18 48 / 0.25)', color: 'var(--danger-text)' }}>
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -542,7 +542,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
         )}
 
         {/* Emergency mode — strips the form to the essentials. */}
-        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2.5 min-w-0">
             <Zap className="w-4 h-4 shrink-0" style={{ color: 'var(--warn-text)' }} aria-hidden="true" />
             <div>
@@ -565,9 +565,9 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           </button>
         </div>
 
-        {/* 1. Blood group — large tappable chips, 56px. */}
+        {/* 1. Blood group — large tappable chips, 48px. */}
         <fieldset ref={groupChipsRef} tabIndex={-1}>
-          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <legend className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>
             Blood group needed <span aria-hidden="true" style={{ color: 'var(--blood)' }}>*</span>
           </legend>
           <div className="grid grid-cols-4 gap-2" role="group" aria-label="Blood group">
@@ -578,7 +578,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 id={`chip-blood-${g}`}
                 aria-pressed={bloodGroup === g}
                 onClick={() => { setBloodGroup(g); setGroupError(""); }}
-                className={`h-14 rounded-xl border-2 font-display font-extrabold text-base transition-all duration-150 flex items-center justify-center gap-1
+                className={`h-12 rounded-xl border-2 font-display font-extrabold text-base transition-all duration-150 flex items-center justify-center gap-1
                   ${bloodGroup === g
                     ? "bg-blood border-blood text-white shadow-1"
                     : "bg-card border-border text-ink hover:border-blood/50"}`}
@@ -593,7 +593,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
             id="chip-blood-not-sure"
             aria-pressed={bloodGroup === ""}
             onClick={() => { setBloodGroup(""); setGroupError(""); }}
-            className={`mt-2 w-full h-12 rounded-xl border-2 border-dashed text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-150
+            className={`mt-1.5 w-full h-10 rounded-xl border-2 border-dashed text-sm font-semibold flex items-center justify-center gap-2 transition-colors duration-150
               ${bloodGroup === "" ? "bg-blood-tint border-blood text-blood-dark" : "bg-card border-border text-muted hover:border-blood/40"}`}
           >
             <HelpCircle className="w-4 h-4" aria-hidden="true" />
@@ -608,10 +608,10 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
 
         {/* 2. Phone — prefilled +92, the only truly required field. */}
         <div>
-          <label htmlFor="input-sos-phone" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <label htmlFor="input-sos-phone" className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>
             Your mobile number <span aria-hidden="true" style={{ color: 'var(--blood)' }}>*</span>
           </label>
-          <div className={`flex items-stretch h-12 rounded-xl border bg-card overflow-hidden transition-colors duration-150 focus-within:ring-2 focus-within:ring-blood/15 ${phoneError ? "border-blood" : "border-border-strong focus-within:border-blood"}`}>
+          <div className={`flex items-stretch h-11 rounded-xl border bg-card overflow-hidden transition-colors duration-150 focus-within:ring-2 focus-within:ring-blood/15 ${phoneError ? "border-blood" : "border-border-strong focus-within:border-blood"}`}>
             <span className="flex items-center px-3 font-mono text-sm font-bold border-r" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}>+92</span>
             <input
               ref={phoneRef}
@@ -641,7 +641,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
 
         {/* 3. Hospital — searchable, "Not sure" allowed. */}
         <fieldset>
-          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <legend className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>
             Hospital <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
           </legend>
           <div className="flex gap-2 mb-2">
@@ -652,7 +652,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 id={`chip-city-${c.toLowerCase()}`}
                 aria-pressed={city === c}
                 onClick={() => setCity(c)}
-                className={`h-10 px-4 rounded-lg border text-sm font-bold transition-colors duration-150
+                className={`h-9 px-4 rounded-lg border text-sm font-bold transition-colors duration-150
                   ${city === c ? "bg-blood text-white border-blood" : "bg-card text-muted border-border hover:border-ink/40"}`}
               >
                 {c}
@@ -674,7 +674,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
               onChange={(e) => { setHospitalQuery(e.target.value); setHospitalOpen(true); }}
               onFocus={() => setHospitalOpen(true)}
               onKeyDown={(e) => { if (e.key === "Escape") setHospitalOpen(false); }}
-              className="w-full h-12 pl-9 pr-3 rounded-xl bg-card border text-sm outline-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood border-border-strong placeholder:text-muted"
+              className="w-full h-11 pl-9 pr-3 rounded-xl bg-card border text-sm outline-none transition-colors duration-150 focus:ring-2 focus:ring-blood/15 focus:border-blood border-border-strong placeholder:text-muted"
             />
             {hospitalOpen && (
               <ul
@@ -725,14 +725,14 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
 
         {/* Units — always visible, compact. */}
         <fieldset>
-          <legend className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>Units</legend>
-          <div className="flex items-center gap-1 h-14 rounded-xl border bg-card px-1.5" style={{ borderColor: 'var(--border)' }}>
+          <legend className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>Units</legend>
+          <div className="flex items-center gap-1 h-12 rounded-xl border bg-card px-1.5" style={{ borderColor: 'var(--border)' }}>
             <button
               type="button"
               id="btn-sos-units-minus"
               aria-label="Fewer units"
               onClick={() => setUnitsNeeded(u => Math.max(1, u - 1))}
-              className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
+              className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
               style={{ color: 'var(--ink)' }}
             >
               <Minus className="w-4 h-4" />
@@ -743,7 +743,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
               id="btn-sos-units-plus"
               aria-label="More units"
               onClick={() => setUnitsNeeded(u => Math.min(10, u + 1))}
-              className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
+              className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-surface-2 transition-colors duration-150"
               style={{ color: 'var(--ink)' }}
             >
               <Plus className="w-4 h-4" />
@@ -758,7 +758,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
             id="btn-toggle-more-details"
             aria-expanded={!emergencyMode || showMoreDetails}
             onClick={() => setShowMoreDetails(s => !s)}
-            className="w-full flex items-center justify-between px-4 py-3 transition-colors duration-150 hover:bg-surface-2"
+            className="w-full flex items-center justify-between px-4 py-2.5 transition-colors duration-150 hover:bg-surface-2"
             style={{ background: 'var(--surface-2)' }}
           >
             <span className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--ink)' }}>
@@ -769,7 +769,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           {(!emergencyMode || showMoreDetails) && (
             <div className="p-4 space-y-4 border-t fade-in" style={{ borderColor: 'var(--border)' }}>
               <div>
-                <label htmlFor="input-sos-patient-name" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+                <label htmlFor="input-sos-patient-name" className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>
                   Patient name <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
                 </label>
                 <input
@@ -792,7 +792,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 <option value="Routine">Routine</option>
               </Select>
               <div>
-                <label htmlFor="input-sos-reason" className="block font-semibold mb-2 text-sm" style={{ color: 'var(--ink)' }}>
+                <label htmlFor="input-sos-reason" className="block font-semibold mb-1.5 text-sm" style={{ color: 'var(--ink)' }}>
                   Reason / diagnosis details <span className="font-normal" style={{ color: 'var(--muted)' }}>(optional)</span>
                 </label>
                 <textarea
