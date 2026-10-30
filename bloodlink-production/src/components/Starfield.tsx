@@ -19,9 +19,9 @@ const STARS = Array.from({ length: 14 }, (_, i) => {
     return x - Math.floor(x);
   };
   const palette = [
-    "rgb(196 18 48 / 0.55)",
-    "rgb(255 255 255 / 0.50)",
-    "rgb(244 114 133 / 0.45)",
+    "rgb(196 18 48 / 0.40)",
+    "rgb(244 114 133 / 0.55)",
+    "rgb(255 154 174 / 0.50)",
   ];
   return {
     left: r(1) * 100,

@@ -107,32 +107,33 @@
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* Dark mode — wine-black paper, same crimson. */
+/* Dark scheme — the founder chose a very light crimson ("blush dawn")
+   theme instead of black: warm blush paper, near-black wine ink. Same
+   crimson actions. All contrast pairs re-verified: ink AA, muted ≥4.5:1,
+   border-strong ≥3:1 (WCAG 1.4.11), blood-ink #8B0A1F ≥10:1 on the tint. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-ink: #F2EDEA;
-    --color-ink-2: #C9C2C9;
-    --color-surface: #140A0E;
-    --color-surface-2: #1C1719;
-    --color-card: #1C1719;
-    --color-muted: #A79FAB;
-    --color-border: #332A30;
-    --color-border-strong: #574B54;
-    --color-blood-tint: #35121B;
-    --color-blood-soft: #35121B;
-    /* Dark crimson is unreadable on the dark tint — lift the text tones.
-       --color-blood-ink: error/notice text on tint/card/surface.
-       --color-blood-bright: the wordmark "Radar" accent on dark surfaces. */
-    --color-blood-ink: #FF9DAE;
-    --color-blood-bright: #FF8093;
-    --color-safe-tint: #0E2A20;
-    --color-safe-soft: #0E2A20;
-    --color-warn-tint: #2B2008;
-    --color-warn-soft: #2B2008;
-    --color-gold-soft: #2B2210;
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
-    --shadow-2: 0 6px 20px rgb(0 0 0 / 0.45);
-    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.55);
+    --color-ink: #2A0A12;
+    --color-ink-2: #5A4450;
+    --color-surface: #FFF1EE;
+    --color-surface-2: #FBE4E1;
+    --color-card: #FFFDFD;
+    --color-muted: #75616B;
+    --color-border: #F2D8D4;
+    --color-border-strong: #9A7E79;
+    --color-blood-tint: #FFE7E3;
+    --color-blood-soft: #FFE7E3;
+    /* Text tones on the light tint lift back to dark crimson. */
+    --color-blood-ink: #8B0A1F;
+    --color-blood-bright: #C41230;
+    --color-safe-tint: #E3F5EC;
+    --color-safe-soft: #E3F5EC;
+    --color-warn-tint: #FFF2D9;
+    --color-warn-soft: #FFF2D9;
+    --color-gold-soft: #FAEFD9;
+    --shadow-1: 0 1px 2px rgb(42 10 18 / 0.06);
+    --shadow-2: 0 6px 20px rgb(42 10 18 / 0.08);
+    --shadow-3: 0 12px 32px rgb(42 10 18 / 0.12);
   }
 }
 
@@ -185,14 +186,14 @@ h3, h4 { letter-spacing: -0.02em; }
     linear-gradient(140deg, var(--color-blood), var(--color-blood-dark) 60%, var(--color-blood-hover)) border-box;
   box-shadow: var(--shadow-sos);
 }
-/* Dark mode: the card surface must separate from the page background, not
-   melt into it — lighter paper plus a soft crimson halo behind the ring. */
+/* Dark scheme: white paper like the light theme — the blush page behind it
+   carries the separation. Softer halo so the card reads calm, not neon. */
 @media (prefers-color-scheme: dark) {
   .sos-card {
     background:
-      linear-gradient(#251B20, #251B20) padding-box,
+      linear-gradient(var(--color-card), var(--color-card)) padding-box,
       linear-gradient(140deg, var(--color-blood), var(--color-blood-dark) 60%, var(--color-blood-hover)) border-box;
-    box-shadow: var(--shadow-sos), 0 0 56px rgb(196 18 48 / 0.12);
+    box-shadow: var(--shadow-sos), 0 0 36px rgb(196 18 48 / 0.08);
   }
 }
 
@@ -269,8 +270,8 @@ h3, h4 { letter-spacing: -0.02em; }
 }
 .brand-card:hover { box-shadow: var(--shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.8); }
 @media (prefers-color-scheme: dark) {
-  .brand-card { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); }
-  .brand-card:hover { box-shadow: var(--shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.04); }
+  .brand-card { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8); }
+  .brand-card:hover { box-shadow: var(--shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.8); }
 }
 
 /* ── Signature motif: radar ring ─────────────────────────────────────────── */
@@ -317,8 +318,59 @@ h3, h4 { letter-spacing: -0.02em; }
    these must not run while offscreen. */
 .hero-rest .drop-breathe,
 .hero-rest .ring-ping,
-.hero-rest .ring-ping-delay {
+.hero-rest .ring-ping-delay,
+.hero-rest .mascot-bob,
+.hero-rest .mascot-shadow,
+.hero-rest .mascot-arm-left,
+.hero-rest .mascot-arm-right,
+.hero-rest .mascot-heart {
   animation-play-state: paused;
+}
+
+/* ── Hero mascot — cute bobbing drop with drifting hearts ───────────────── */
+/* Transform-only keyframes on a handful of layers (same perf contract as the
+   starfield). The shadow squashes in counter-phase with the bob. */
+.hero-mascot .mascot-bob {
+  animation: mascot-bob 3.2s ease-in-out infinite;
+}
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.hero-mascot .mascot-shadow {
+  animation: mascot-shadow 3.2s ease-in-out infinite;
+}
+@keyframes mascot-shadow {
+  0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 1; }
+  50% { transform: translateX(-50%) scaleX(0.82); opacity: 0.7; }
+}
+.hero-mascot .mascot-arm-left,
+.hero-mascot .mascot-arm-right {
+  animation: mascot-wave 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+}
+.hero-mascot .mascot-arm-left { transform-origin: 100% 0; }
+.hero-mascot .mascot-arm-right { transform-origin: 0 0; animation-delay: 1.6s; }
+@keyframes mascot-wave {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(9deg); }
+}
+.hero-mascot .mascot-heart {
+  opacity: 0;
+  animation: mascot-heart-rise 4.6s ease-in-out infinite;
+}
+@keyframes mascot-heart-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  12% { opacity: 0.9; }
+  85% { opacity: 0.5; }
+  100% { transform: translateY(-86px) scale(0.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-mascot .mascot-bob,
+  .hero-mascot .mascot-shadow,
+  .hero-mascot .mascot-arm-left,
+  .hero-mascot .mascot-arm-right { animation: none; }
+  .hero-mascot .mascot-heart { display: none; }
 }
 
 /* Success check draw-in + single ripple. */
@@ -431,7 +483,7 @@ h3, h4 { letter-spacing: -0.02em; }
 }
 @media (prefers-color-scheme: dark) {
   .map-mute-overlay {
-    background: rgb(20 10 14 / 0.55);
+    background: rgb(255 241 238 / 0.30);
   }
 }
 .leaflet-container { font-family: var(--font-sans); }
