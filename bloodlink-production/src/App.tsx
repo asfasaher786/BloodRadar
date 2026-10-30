@@ -26,6 +26,7 @@ import SosReportButton from "./components/SosReportButton";
 import HowItWorks from "./components/HowItWorks";
 import { BecomeDonorBand, TrustBand } from "./components/HomeBands";
 import Starfield from "./components/Starfield";
+import HeroMascot from "./components/HeroMascot";
 
 // Code-split the heaviest widgets (Leaflet map bundle, charts, ML panel,
 // chatbot) so the first paint ships a small shell — each lazy chunk only
@@ -639,7 +640,7 @@ export default function App() {
           hit-testable); the section sits above it. */}
       <div id="top" ref={heroRef} className="hero-glow border-b border-border/60 relative overflow-hidden">
       <Starfield />
-      <section className="relative z-[1] max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 md:pt-14 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+      <section className="relative z-[1] max-w-7xl mx-auto w-full px-4 sm:px-6 pt-8 md:pt-10 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-start">
         {/* Left — calm, confident copy, vertically centered against the card. */}
         <div className="lg:col-span-6 space-y-6 fade-up">
           <span className="inline-flex items-center gap-2 text-xs font-mono font-semibold px-3 py-1.5 rounded-full border bg-blood-soft border-blood/20 text-blood-ink">
@@ -696,6 +697,13 @@ export default function App() {
               View Live Emergencies
               <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </a>
+          </div>
+
+          {/* Cute animated mascot fills the lower-left of the hero — desktop
+              only, where the empty column space exists (mobile keeps the
+              tight single-column flow). */}
+          <div className="hidden lg:flex justify-center pt-2">
+            <HeroMascot />
           </div>
         </div>
 
@@ -1110,8 +1118,10 @@ export default function App() {
 
       {/* FOOTER */}
       <footer className="border-t py-8 text-center" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <Droplets className="w-4 h-4 fill-current" style={{ color: 'var(--blood)' }} />
+        <div className="flex items-center justify-center gap-2.5 mb-4">
+          <div className="w-6 h-6 rounded-lg overflow-hidden shrink-0">
+            <img src={brandIcon} alt="" className="w-full h-full object-cover" />
+          </div>
           <span className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>BloodRadar</span>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-4 px-4">
