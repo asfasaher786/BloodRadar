@@ -18,8 +18,12 @@ for (const viewport of [
       await createSosViaUi(page, { bloodGroup: "O+", phone: uniquePhone() });
 
       const card = page.locator("#sos-request-form-card");
-      await expect(card.getByText(/compatible donors/)).toBeVisible();
-      await expect(card.locator('a[href^="https://wa.me/"]')).toBeVisible();
+      // The card subtitle also mentions "compatible donors" — match the
+      // success line's full phrase to stay unambiguous.
+      await expect(card.getByText(/compatible donors matched nearby/)).toBeVisible();
+      // The live requester panel repeats a compact "WhatsApp" link — target
+      // the success CTA by its role name.
+      await expect(card.getByRole("link", { name: "Share on WhatsApp" })).toBeVisible();
 
       // No horizontal overflow: the page must not scroll sideways.
       const overflows = await page.evaluate(

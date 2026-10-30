@@ -9,14 +9,16 @@ test.describe("SOS flow", () => {
     await page.goto("/");
     await createSosViaUi(page, { bloodGroup: "O+", phone: uniquePhone() });
 
-    // Requester panel: LIVE badge and the matching-donor line.
+    // Requester panel: LIVE badge and the matching-donor line. The card
+    // subtitle also mentions "compatible donors", so match the success
+    // line's full phrase to keep the locator unambiguous.
     const card = page.locator("#sos-request-form-card");
-    // exact:true — the subtitle "Your SOS is live" would otherwise also match.
     await expect(card.getByText("LIVE", { exact: true })).toBeVisible();
-    await expect(card.getByText(/compatible donors/)).toBeVisible();
+    await expect(card.getByText(/compatible donors matched nearby/)).toBeVisible();
 
-    // WhatsApp share carries the urgent message text.
-    const share = card.locator('a[href^="https://wa.me/"]');
+    // WhatsApp share carries the urgent message text. The live requester
+    // panel repeats a compact "WhatsApp" link, so target the success CTA.
+    const share = card.getByRole("link", { name: "Share on WhatsApp" });
     await expect(share).toBeVisible();
     const href = await share.getAttribute("href");
     expect(href).toContain("URGENT");
@@ -39,7 +41,9 @@ test.describe("SOS flow", () => {
     await page.locator("#btn-submit-sos-request").click();
 
     // Honest no-match copy, plus the WhatsApp fallback link stays available.
-    await expect(page.getByText(/No compatible donors in the registry right now/)).toBeVisible({ timeout: 15_000 });
+    // The success state and the live requester panel repeat the same line —
+    // assert the success copy (first in DOM order).
+    await expect(page.getByText(/No compatible donors in the registry right now/).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('a[href^="https://wa.me/"]').first()).toBeVisible();
   });
 });

@@ -34,7 +34,7 @@ test.describe("click matrix — header & chrome", () => {
     await page.goto("/");
     await page.getByRole("link", { name: "View Live Emergencies" }).click();
     await expect(page).toHaveURL(/#emergencies-board$/);
-    await page.getByRole("link", { name: "Request Blood (SOS)" }).click();
+    await page.getByRole("link", { name: "Request blood now" }).click();
     await expect(page).toHaveURL(/#sos-form$/);
   });
 
