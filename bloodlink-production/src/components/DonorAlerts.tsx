@@ -47,7 +47,9 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
   const [loaded, setLoaded] = useState(false);
   const [prefs, setPrefs] = useState<NotifyPrefs | null>(null);
   const [timezone, setTimezone] = useState("");
-  const [smsProvider, setSmsProvider] = useState("");
+  // P0-6: false until a live SMS provider is connected. The toggle is
+  // disabled and the stored preference coerced off while unavailable.
+  const [smsAlertsAvailable, setSmsAlertsAvailable] = useState(false);
   const [push, setPush] = useState<PushStatus | null>(null);
   const [pushState, setPushState] = useState<"unknown" | "subscribed" | "denied" | "unsupported">("unknown");
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         const data = await prefsRes.json();
         setPrefs(data.prefs);
         setTimezone(data.timezone || "");
-        setSmsProvider(data.smsProvider || "");
+        setSmsAlertsAvailable(data.smsAlertsAvailable === true);
       }
       if (pushRes.ok) {
         const data = await pushRes.json();
@@ -111,7 +113,9 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(prefs),
+        // P0-6: never claim a channel that can't deliver — the backend
+        // coerces too, this keeps the echoed state honest either way.
+        body: JSON.stringify({ ...prefs, smsAlerts: smsAlertsAvailable ? prefs.smsAlerts : false }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -215,16 +219,23 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
           <input type="checkbox" className="w-4 h-4 accent-[#C41230]" checked={prefs.appAlerts} onChange={() => toggle("appAlerts")} />
         </label>
 
-        <label className="flex items-center justify-between gap-3 p-2.5 rounded-xl border cursor-pointer" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <label className={`flex items-center justify-between gap-3 p-2.5 rounded-xl border ${smsAlertsAvailable ? "cursor-pointer" : "opacity-60"}`} style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <span className="flex items-center gap-2 text-xs font-semibold" style={{ color: 'var(--ink)' }}>
             <Smartphone className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
             SMS alerts
           </span>
-          <input type="checkbox" className="w-4 h-4 accent-[#C41230]" checked={prefs.smsAlerts} onChange={() => toggle("smsAlerts")} />
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-[#C41230] disabled:cursor-not-allowed"
+            checked={smsAlertsAvailable && prefs.smsAlerts}
+            disabled={!smsAlertsAvailable}
+            onChange={() => toggle("smsAlerts")}
+          />
         </label>
-        {smsProvider === "console" && (
+        {/* P0-6: honest pause note until #52 connects a live SMS provider. */}
+        {!smsAlertsAvailable && (
           <p className="text-xs font-mono" style={{ color: 'var(--warn-ink)' }}>
-            Test mode: SMS messages are printed to the server log, not actually sent. A live SMS provider is configured at deployment.
+            SMS alerts are paused until a live SMS provider is connected. In-app alerts keep you covered meanwhile.
           </p>
         )}
 
@@ -307,7 +318,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
           ) : (
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               <Bell className="w-3 h-3 inline mr-1" />
-              Web push isn't configured on this deployment yet, so browser notifications are unavailable. In-app and SMS alerts still work.
+              Web push isn't configured on this deployment yet, so browser notifications are unavailable. In-app alerts still work.
             </p>
           )}
         </div>

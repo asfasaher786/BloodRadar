@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createApp } from "../app";
-import { registerDonor, loginAs, createSos, uniquePhone } from "./helpers";
+import { registerDonor, loginAs, createSos, uniquePhone, requestProof } from "./helpers";
 
 // Privacy contract: public SOS and donor listings never contain a full phone
 // number. The requester's one-time code is their only credential. Contact
@@ -196,9 +196,13 @@ describe("Abuse controls (Phase 3)", () => {
     const phone = uniquePhone();
 
     const first = await createSos(app, { contactPhone: phone, bloodGroup: "B-" });
+    // P0-1: the duplicate re-submit must still present a valid proof —
+    // one proof token covers several posts within its 15-minute lifetime.
+    const proofToken = await requestProof(app, phone);
     const again = await request(app).post("/api/emergencies").send({
       bloodGroup: "B-",
       contactPhone: phone,
+      proofToken,
     });
     expect(again.status).toBe(200);
     expect(again.body.duplicate).toBe(true);
@@ -224,9 +228,13 @@ describe("Abuse controls (Phase 3)", () => {
       expect(res.request.id).toBeTruthy();
     }
 
+    // P0-1: the proof check passes (valid token) — the 429 comes from the
+    // per-phone cap, not from missing verification.
+    const proofToken = await requestProof(app, phone);
     const fourth = await request(app).post("/api/emergencies").send({
       bloodGroup: "AB+",
       contactPhone: phone,
+      proofToken,
     });
     expect(fourth.status).toBe(429);
     expect(fourth.body.error).toContain("hospital");
@@ -255,6 +263,107 @@ describe("Abuse controls (Phase 3)", () => {
     const audit = await admin.agent.get("/api/admin/audit");
     expect(audit.status).toBe(200);
     expect(audit.body.some((entry: any) => entry.action === "sos_reported" && entry.sosId === sos.id)).toBe(true);
+  });
+});
+
+describe("Requester phone proof (P0-1)", () => {
+  const validBody = (phone: string, proofToken?: string) => ({
+    patientName: "Proof Test",
+    bloodGroup: "O+",
+    unitsNeeded: 1,
+    contactPhone: phone,
+    reason: "Proof test",
+    urgency: "Immediate (SOS)",
+    city: "Islamabad",
+    ...(proofToken ? { proofToken } : {}),
+  });
+
+  it("rejects an anonymous SOS without a proof token (401 PROOF_REQUIRED) and creates nothing", async () => {
+    const app = createApp();
+    const before = (await request(app).get("/api/emergencies")).body.length;
+
+    const res = await request(app).post("/api/emergencies").send(validBody(uniquePhone()));
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("PROOF_REQUIRED");
+    expect(res.body.error).toContain("Verify your phone number");
+
+    const after = (await request(app).get("/api/emergencies")).body.length;
+    expect(after).toBe(before);
+  });
+
+  it("rejects a garbage proof token", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/api/emergencies")
+      .send(validBody(uniquePhone(), "f".repeat(64)));
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("PROOF_REQUIRED");
+  });
+
+  it("rejects a proof token bound to a different phone", async () => {
+    const app = createApp();
+    const proofToken = await requestProof(app, uniquePhone());
+    const res = await request(app)
+      .post("/api/emergencies")
+      .send(validBody(uniquePhone(), proofToken));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toContain("doesn't match");
+  });
+
+  it("rejects an expired proof token", async () => {
+    const oldTtl = process.env.REQUESTER_PROOF_TTL_MS;
+    try {
+      // 1 ms TTL → any token is expired almost immediately.
+      process.env.REQUESTER_PROOF_TTL_MS = "1";
+      const app = createApp();
+      const phone = uniquePhone();
+      const proofToken = await requestProof(app, phone);
+      await new Promise((r) => setTimeout(r, 20));
+      const res = await request(app)
+        .post("/api/emergencies")
+        .send(validBody(phone, proofToken));
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain("expired");
+    } finally {
+      if (oldTtl === undefined) delete process.env.REQUESTER_PROOF_TTL_MS;
+      else process.env.REQUESTER_PROOF_TTL_MS = oldTtl;
+    }
+  });
+
+  it("lets one proof token cover several posts within its lifetime (multi-use)", async () => {
+    const app = createApp();
+    const phone = uniquePhone();
+    const proofToken = await requestProof(app, phone);
+
+    const first = await request(app)
+      .post("/api/emergencies")
+      .send({ ...validBody(phone, proofToken), bloodGroup: "O-" });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post("/api/emergencies")
+      .send({ ...validBody(phone, proofToken), bloodGroup: "A+" });
+    expect(second.status).toBe(200);
+  });
+
+  it("never echoes the proof token on the requester OTP request path in non-test mode", async () => {
+    const app = createApp();
+    // devOtp is dev-only; the proof token itself is only ever issued on
+    // verify — never on request.
+    const res = await request(app).post("/api/requester/otp/request").send({ phone: uniquePhone() });
+    expect(res.status).toBe(200);
+    expect(res.body.proofToken).toBeUndefined();
+  });
+
+  it("rejects a requester verify with a wrong code and issues no proof", async () => {
+    const app = createApp();
+    const phone = uniquePhone();
+    await request(app).post("/api/requester/otp/request").send({ phone });
+    const res = await request(app)
+      .post("/api/requester/otp/verify")
+      .send({ phone, code: "000000" });
+    expect(res.status).toBe(400);
+    expect(res.body.proofToken).toBeUndefined();
   });
 });
 

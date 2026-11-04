@@ -98,9 +98,9 @@ router.post("/otp/request", async (req, res, next) => {
       return res.status(429).json({ error: result.error });
     }
 
-    // devOtp exists ONLY outside production (console SMS provider). The UI
-    // renders it inside a clearly-labelled test-mode hint. Production
-    // responses never contain the code — ever.
+    // devOtp exists ONLY when ALLOW_DEV_AUTH_SHORTCUTS is explicitly on
+    // (dev/test opt-in, P0-2). The UI renders it inside a clearly-labelled
+    // test-mode hint. Production responses never contain the code — ever.
     res.json({ success: true, message: "Verification code sent.", ...(result.devOtp ? { devOtp: result.devOtp } : {}) });
   } catch (err) {
     next(err);

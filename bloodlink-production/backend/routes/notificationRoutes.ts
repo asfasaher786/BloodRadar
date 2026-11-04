@@ -12,6 +12,7 @@ import {
 } from "../services/dbService";
 import { authMiddleware } from "../middleware/auth";
 import { DEFAULT_NOTIFY_PREFS, validateNotifyPrefs } from "../lib/notifyService";
+import { hasLiveSmsProvider } from "../lib/smsProvider";
 import { CONFIG } from "../config/config";
 
 const router = Router();
@@ -80,6 +81,9 @@ router.get("/preferences", authMiddleware, async (req: any, res, next) => {
       prefs,
       timezone: CONFIG.NOTIFICATION_TZ,
       smsProvider: CONFIG.SMS_PROVIDER,
+      // P0-6: the SMS toggle stays disabled until a live provider is
+      // connected ("console" only prints to server logs).
+      smsAlertsAvailable: hasLiveSmsProvider(),
     });
   } catch (err) {
     next(err);
@@ -96,6 +100,12 @@ router.put("/preferences", authMiddleware, async (req: any, res, next) => {
     // trap; reject it explicitly rather than storing a footgun.
     if (parsed.data.quietStart === parsed.data.quietEnd) {
       return res.status(400).json({ error: "Quiet hours start and end cannot be the same time." });
+    }
+    // P0-6: without a live provider, smsAlerts can't deliver anything.
+    // Coerce instead of rejecting so a stale "on" value (or an old client)
+    // never blocks saving the rest of the preferences.
+    if (!hasLiveSmsProvider() && parsed.data.smsAlerts) {
+      parsed.data.smsAlerts = false;
     }
     const updated = await updateDonorNotifyPrefs(req.auth.sub, parsed.data);
     if (!updated) {

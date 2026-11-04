@@ -17,6 +17,13 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
+    // The app honors prefers-reduced-motion (CSS + MotionConfig). Emulating
+    // it makes hit-testing deterministic: html { scroll-behavior: smooth }
+    // is disabled under reduce, and WebKit's smooth scrollIntoViewIfNeeded
+    // otherwise re-triggers on every click retry and never settles
+    // ("element is not stable" — proven via trace screencast pixel diffs:
+    // the target oscillated 4px on a ~1s cycle for the full 180s timeout).
+    reducedMotion: "reduce",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

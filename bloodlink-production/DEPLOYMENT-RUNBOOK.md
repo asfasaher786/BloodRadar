@@ -51,7 +51,7 @@ Required in production (≥32 chars); the server refuses to boot without it. Gen
 3. In **Network Access** → Add IP address → **Allow access from anywhere** (`0.0.0.0/0`) — required for Render, whose outbound IPs are not fixed.
 4. In **Deployment → Clusters → Connect → Drivers** → copy the connection string, replace `<password>` with the real one. Set it as `MONGO_URI` in the platform env (Render dashboard or Lightsail `.env`).
 
-**Important behavior to know:** the server auto-creates the `bloodradar` database, all collections, and indexes on first connect, and seeds the sample dataset (flagged `isSample: true`). If the Mongo connection ever fails, the server **falls back to an in-memory store** and keeps serving — but that store is lost on restart. Watch the boot log for `db=mongodb` (correct) vs `db=fallback` (problem).
+**Important behavior to know:** the server auto-creates the `bloodradar` database, all collections, and indexes on first connect, and seeds the sample dataset (flagged `isSample: true`). Production **refuses to boot without `MONGO_URI`** (P0-4), and if the Mongo connection fails at runtime the server falls back to an in-memory store and keeps serving — but that store is lost on restart, and `/health` reports **503** (not ok) while in that state, so the Render health check and any uptime monitor will see it. Watch the boot log for `db=mongodb` (correct) vs `db=fallback` (problem).
 
 ---
 

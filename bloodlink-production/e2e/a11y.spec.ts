@@ -18,15 +18,21 @@ test.describe("axe accessibility scans", () => {
   test.use({ reducedMotion: "reduce" });
 
   test("homepage has no serious or critical violations", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // domcontentloaded fires while the app is still on its loading skeleton
+    // (firefox is slow enough that axe would scan the skeleton, not the app).
+    // The SOS card only renders once data has arrived, so it proves the app
+    // is fully mounted before axe runs.
     await expect(page.locator("#main-content")).toBeVisible();
+    await expect(page.locator("#sos-request-form-card")).toBeVisible();
     const { violations } = await new AxeBuilder({ page }).analyze();
     const serious = seriousRules(violations);
     expect(serious.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   });
 
   test("SOS request card is clean", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#sos-request-form-card")).toBeVisible();
     const { violations } = await new AxeBuilder({ page })
       .include("#sos-request-form-card")
       .analyze();
@@ -34,7 +40,8 @@ test.describe("axe accessibility scans", () => {
   });
 
   test("donor search module is clean", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#donor-search-module-card")).toBeVisible();
     const { violations } = await new AxeBuilder({ page })
       .include("#donor-search-module-card")
       .analyze();
@@ -42,7 +49,8 @@ test.describe("axe accessibility scans", () => {
   });
 
   test("organization portal is clean", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#org-portal")).toBeVisible();
     const { violations } = await new AxeBuilder({ page })
       .include("#org-portal")
       .analyze();
@@ -52,7 +60,7 @@ test.describe("axe accessibility scans", () => {
 
 test.describe("keyboard-only navigation", () => {
   test("skip link jumps to content and focus order is sensible", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const skip = page.locator('a[href="#main-content"]').first();
     await skip.focus();
     await expect(skip).toBeFocused();

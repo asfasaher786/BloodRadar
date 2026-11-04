@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createApp } from "../app";
-import { uniquePhone } from "./helpers";
+import { uniquePhone, requestProof } from "./helpers";
 
 // The master prompt's done-when: "rate limits demonstrably trigger."
 // Each test builds a fresh app so its limiters start at zero.
@@ -9,14 +9,19 @@ import { uniquePhone } from "./helpers";
 describe("rate limits", () => {
   it("blocks a 6th SOS in 10 minutes with 429", async () => {
     const app = createApp();
+    const phone = uniquePhone();
+    // P0-1: posts need a valid proof — one token covers all five. The 429
+    // must come from the limiter, not from missing phone verification.
+    const proofToken = await requestProof(app, phone);
     const body = {
       patientName: "Rate Test",
       bloodGroup: "O-",
       unitsNeeded: 1,
-      contactPhone: uniquePhone(),
+      contactPhone: phone,
       reason: "Rate limit test",
       urgency: "Immediate (SOS)",
       city: "Islamabad",
+      proofToken,
     };
     for (let i = 0; i < 5; i++) {
       const res = await request(app).post("/api/emergencies").send(body);

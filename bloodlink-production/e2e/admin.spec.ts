@@ -44,7 +44,7 @@ test.describe("admin moderation", () => {
   });
 
   test("North Star metric is honest — never fabricates a median", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await loginViaUi(page, ADMIN_PHONE);
     const panel = page.locator("#admin-panel");
     await expect(panel).toBeVisible({ timeout: 15_000 });

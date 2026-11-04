@@ -14,7 +14,7 @@ for (const viewport of [
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     test("SOS journey works end to end", async ({ page }) => {
-      await page.goto("/");
+      await page.goto("/", { waitUntil: "domcontentloaded" });
       await createSosViaUi(page, { bloodGroup: "O+", phone: uniquePhone() });
 
       const card = page.locator("#sos-request-form-card");
@@ -24,12 +24,26 @@ for (const viewport of [
       // The live requester panel repeats a compact "WhatsApp" link — target
       // the success CTA by its role name.
       await expect(card.getByRole("link", { name: "Share on WhatsApp" })).toBeVisible();
+      // Wait for the live panel's settle marker (its footer line) before
+      // measuring geometry: the entrance animations are still running right
+      // after the success CTA appears.
+      await expect(card.getByText(/We check every 15 seconds/)).toBeVisible();
 
-      // No horizontal overflow: the page must not scroll sideways.
-      const overflows = await page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-      );
-      expect(overflows).toBeLessThanOrEqual(1);
+      // No horizontal overflow once settled: the page must not scroll
+      // sideways. Polled (not a single instant sample) because the full gate
+      // caught one 672px reading that never reproduced in isolation, and a
+      // probe traced the only repeatable overflow to the mid-boot mounting
+      // state — a transient, not the settled success state. A bounded poll
+      // still fails on anything persistent.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+            ),
+          { timeout: 15_000 }
+        )
+        .toBeLessThanOrEqual(1);
     });
   });
 }

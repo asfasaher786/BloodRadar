@@ -6,7 +6,13 @@ import { test, expect } from "@playwright/test";
 
 test.describe("offline safety net", () => {
   test("shows the call-directly banner offline and hides it when back online", async ({ page, context }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // domcontentloaded fires while the app is still mounting. The offline
+    // banner depends on the window online/offline listeners React attaches —
+    // flipping the network before the app mounts means the event is silently
+    // missed (observed in the full gate: banner never appeared). The SOS
+    // card only exists once the app is mounted, so wait for it first.
+    await expect(page.locator("#sos-request-form-card")).toBeVisible();
     await expect(page.getByText(/You're offline/)).toBeHidden();
 
     await context.setOffline(true);

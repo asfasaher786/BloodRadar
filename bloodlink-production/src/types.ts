@@ -89,9 +89,13 @@ export interface EmergencyRequest {
   requiredBy: string;
   reason: string;
   urgency: 'Immediate (SOS)' | 'Urgent' | 'Routine';
-  status: 'Pending' | 'Fulfilled' | 'Cancelled';
+  status: 'Pending' | 'Fulfilled' | 'Cancelled' | 'Expired';
   city: string; // any city in SUPPORTED_CITIES (see src/lib/regions.ts)
   createdAt: string;
+  // P0-5: auto-close deadline. Absent on legacy rows — the server derives it
+  // from createdAt + SOS_EXPIRY_HOURS. Present only while the SOS is open.
+  expiresAt?: string;
+  expiredAt?: string;
   matchingDonorsCount: number;
   // Organization portal (Phase 3): present only when an approved NGO/hospital
   // organization posted this request on behalf of the patient.

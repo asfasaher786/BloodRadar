@@ -20,6 +20,7 @@ import smsRoutes from "./routes/smsRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import orgRoutes from "./routes/orgRoutes";
+import requesterRoutes from "./routes/requesterRoutes";
 
 // The Express app is built by a factory so tests (supertest) can import it
 // without starting a listener or mounting the Vite dev middleware. The
@@ -73,15 +74,22 @@ export function createApp() {
   app.use("/api", limiters.globalApi);
   app.use("/api/auth/otp/request", limiters.otpRequest);
   app.use("/api/auth/otp/verify", limiters.otpVerify);
+  app.use("/api/requester/otp/request", limiters.otpRequest);
+  app.use("/api/requester/otp/verify", limiters.otpVerify);
   app.post("/api/emergencies", limiters.sos);
   app.post("/api/chat", limiters.chat);
 
   // Health with real DB status (the master prompt requires db status here).
+  // P0-4: in production, running on the in-memory fallback is UNHEALTHY —
+  // the probe reports 503 so Render's health check and uptime monitoring
+  // see the truth instead of an "ok" backed by a store that resets on boot.
   app.get("/health", async (_req, res) => {
     try {
       const { mode } = await getDb();
-      res.json({
-        status: "ok",
+      const dbOk = mode === "mongodb";
+      const healthy = dbOk || !CONFIG.IS_PROD;
+      res.status(healthy ? 200 : 503).json({
+        status: dbOk ? "ok" : CONFIG.IS_PROD ? "unhealthy" : "ok",
         mode,
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
@@ -105,6 +113,7 @@ export function createApp() {
   app.use("/api/stats", statsRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/orgs", orgRoutes);
+  app.use("/api/requester", requesterRoutes);
 
   // Live event stream (SSE). PII-free by contract — see services/events.ts.
   app.get("/api/events", (_req, res) => {

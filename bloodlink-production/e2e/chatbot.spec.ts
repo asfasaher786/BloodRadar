@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("chatbot triage", () => {
   test("labels itself honestly and answers with the rules-based badge", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator("#btn-toggle-ai-chat").click();
 
     // Dev has no Gemini key → the header must say so (never claim AI).
@@ -20,7 +20,7 @@ test.describe("chatbot triage", () => {
   });
 
   test("emergency phrasing escalates to triage framing", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator("#btn-toggle-ai-chat").click();
 
     await page.locator("#input-ai-chat-message").fill("emergency help blood needed");
@@ -31,7 +31,7 @@ test.describe("chatbot triage", () => {
   });
 
   test("Escape closes the dialog", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator("#btn-toggle-ai-chat").click();
     await expect(page.locator("#ai-chatbot-dialog")).toBeVisible();
     await page.keyboard.press("Escape");

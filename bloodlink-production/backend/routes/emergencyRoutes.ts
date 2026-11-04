@@ -15,6 +15,7 @@ import {
   deleteEmergency,
   addAuditLog,
   addEmergencyReport,
+  extendEmergency,
 } from "../services/dbService";
 import { rankDonorsForSos } from "../services/donorRanking";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
@@ -22,6 +23,7 @@ import { sanitizeText } from "../lib/sanitize";
 import { authMiddleware, optionalAuthMiddleware, roleMiddleware } from "../middleware/auth";
 import { broadcastEvent } from "../services/events";
 import { notifyMatchingDonors } from "../lib/notifyService";
+import { checkProofToken } from "../services/requesterProofService";
 
 const router = Router();
 
@@ -37,11 +39,19 @@ const createSosSchema = z.object({
   reason: z.string().trim().max(200).optional(),
   urgency: z.string().trim().max(40).optional(),
   city: z.string().trim().max(50).optional(),
+  // P0-1: proof the requester owns the contact phone (15-minute token from
+  // POST /api/requester/otp/verify). Required for anonymous posts; signed-in
+  // posters skip it because their login already verified the phone.
+  proofToken: z.string().trim().max(128).optional(),
 });
 
 const updateStatusSchema = z.object({
-  status: z.enum(["Pending", "Fulfilled", "Cancelled"]),
+  status: z.enum(["Pending", "Fulfilled", "Cancelled", "Expired"]),
   requesterCode: z.string().trim().max(40).optional(),
+});
+
+const extendSchema = z.object({
+  requesterCode: z.string().trim().min(8, "Requester code looks too short").max(40),
 });
 
 const reportSchema = z.object({
@@ -70,11 +80,12 @@ router.get("/", async (_req, res, next) => {
   }
 });
 
-// Anonymous by design: requesters never need an account to raise an SOS.
-// The requester identity is their contact phone alone — validated here.
-// Optional auth: when a signed-in approved organization posts, the SOS is
-// labelled with the org's identity so donors know a verified organization
-// is vouching for it. Anonymous posting stays exactly as before.
+// No account needed: requesters stay anonymous, but P0-1 requires every
+// anonymous post to present a 15-minute proof token bound to the contact
+// phone (POST /api/requester/otp/verify) — anyone can raise an SOS, no one
+// can spam the board without a real phone. Optional auth: when a signed-in
+// approved organization posts, the SOS is labelled with the org's identity
+// so donors know a verified organization is vouching for it.
 router.post("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const parsed = createSosSchema.safeParse(req.body);
@@ -82,6 +93,16 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid SOS request" });
     }
     const d = parsed.data;
+
+    // P0-1: anonymous posts must prove they own the contact phone. A
+    // signed-in poster (donor, org member, admin) already OTP-verified at
+    // login — their session is the proof, no extra step for them.
+    if (!req.auth) {
+      const proof = await checkProofToken(d.proofToken || "", normalizePhone(d.contactPhone));
+      if (proof.ok === false) {
+        return res.status(401).json({ error: proof.error, code: "PROOF_REQUIRED" });
+      }
+    }
 
     // Organization portal (Phase 3): a signed-in org member posting on
     // behalf of a patient. Only APPROVED orgs get the label — a pending
@@ -235,6 +256,11 @@ router.get("/:id/reveal", async (req, res, next) => {
 
     const fulfilled = await getFulfilledContactRequestForSos(id);
     if (!fulfilled) {
+      // P0-5: the polling requester learns here that their request hit the
+      // 48h auto-expiry — the "still need blood?" re-confirm is one tap.
+      if (sos.status === "Expired") {
+        return res.json({ status: "expired", message: "This request closed after 48 hours without an update." });
+      }
       return res.json({ status: "waiting", message: "No donor has accepted yet. We'll notify you the moment someone does." });
     }
     const donor = await getDonorByPhone(fulfilled.donorPhone);
@@ -303,6 +329,46 @@ router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
     }
     broadcastEvent("emergency-status-changed", { id, status: parsed.data.status });
     res.json({ success: true, request: publicSos(updated) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// P0-5 "still need blood?" re-confirm: the requester (proven by their
+// one-time code) or an admin re-opens an expired request — or extends a
+// still-pending one — for another full window. Terminal states can't be
+// reopened. Audited so the re-open trail stays visible.
+router.post("/:id/extend", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const id = sanitizeText(req.params.id, 80);
+    const parsed = extendSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Requester code is required" });
+    }
+
+    const sos = await getEmergencyById(id);
+    if (!sos) return res.status(404).json({ error: "Emergency request not found" });
+
+    const isAdmin = req.auth?.role === "admin";
+    const isRequester = sos.requesterCode === parsed.data.requesterCode;
+    if (!isAdmin && !isRequester) {
+      return res.status(403).json({ error: "Only the requester (with their code) or an admin can re-open this request." });
+    }
+
+    const result = await extendEmergency(id);
+    if ("error" in result) {
+      const code = result.error.includes("already") ? 409 : 404;
+      return res.status(code).json({ error: result.error });
+    }
+
+    await addAuditLog({
+      action: "sos_extended",
+      actor: isAdmin ? req.auth!.sub : "requester",
+      sosId: id,
+      detail: `SOS re-confirmed and extended for another ${process.env.SOS_EXPIRY_HOURS || 48}h (${sos.bloodGroup}, ${sos.hospitalName || "hospital not specified"})`,
+    });
+    broadcastEvent("emergency-status-changed", { id, status: "Pending" });
+    res.json({ success: true, request: publicSos(result.sos) });
   } catch (err) {
     next(err);
   }

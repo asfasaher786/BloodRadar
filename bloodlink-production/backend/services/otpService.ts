@@ -109,8 +109,9 @@ export async function sendOtpToPhone(phone: string): Promise<OtpSendResult> {
     return { ok: false, error: "Failed to send the code through the SMS provider. Please try again." };
   }
 
-  // In non-production the UI shows a "Test mode" hint; production never sees it.
-  return CONFIG.IS_PROD ? { ok: true } : { ok: true, devOtp: code };
+  // P0-2: the devOtp hint exists ONLY when ALLOW_DEV_AUTH_SHORTCUTS is
+  // explicitly on (dev/test opt-in). Production never sees it — ever.
+  return CONFIG.ALLOW_DEV_AUTH_SHORTCUTS ? { ok: true, devOtp: code } : { ok: true };
 }
 
 export type OtpVerifyResult =

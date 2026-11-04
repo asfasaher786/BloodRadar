@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import request from "supertest";
 import { createApp } from "../app";
 import { registerDonor, loginAs, createSos, uniquePhone } from "./helpers";
+import { updateDonorNotifyPrefs } from "../services/dbService";
 import { isWithinQuietHours, validateNotifyPrefs, DEFAULT_NOTIFY_PREFS, NotifyPrefs } from "../lib/notifyService";
 
 // Donor alerting (Phase 3.5): preferences + quiet hours + targeted
@@ -84,14 +85,18 @@ describe("notification preferences API", () => {
     const zeroWindow = await agent.put("/api/notifications/preferences").send({ ...DEFAULT_NOTIFY_PREFS, quietStart: "10:00", quietEnd: "10:00" });
     expect(zeroWindow.status).toBe(400);
 
+    // P0-6: smsAlerts:true is coerced off while no live SMS provider is
+    // connected (test env runs the console provider).
     const good = await agent.put("/api/notifications/preferences").send(
       prefs({ smsAlerts: true, quietHoursEnabled: false, quietStart: "23:00", quietEnd: "07:00" })
     );
     expect(good.status).toBe(200);
+    expect(good.body.prefs.smsAlerts).toBe(false);
 
     const got = await agent.get("/api/notifications/preferences");
-    expect(got.body.prefs.smsAlerts).toBe(true);
+    expect(got.body.prefs.smsAlerts).toBe(false);
     expect(got.body.prefs.quietHoursEnabled).toBe(false);
+    expect(got.body.smsAlertsAvailable).toBe(false);
   });
 });
 
@@ -154,18 +159,24 @@ describe("matched-SOS donor alerting", () => {
     expect(mine.some((n: any) => n.sosId === immediate.request.id)).toBe(true);
   });
 
-  it("sends SMS through the configured provider when the donor opted in", async () => {
+  it("never dispatches donor SMS alerts while no live provider is connected (P0-6)", async () => {
     const smsSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { agent } = await registerDonor(app, { bloodGroup: "AB-", city: "Rawalpindi" });
-    await agent.put("/api/notifications/preferences").send(prefs({ quietHoursEnabled: false, smsAlerts: true }));
+    const { agent, phone } = await registerDonor(app, { bloodGroup: "AB-", city: "Rawalpindi" });
+    // Bypass the save-time coercion: a donor whose row predates P0-6 could
+    // still carry smsAlerts:true. The delivery layer must gate it off too.
+    await updateDonorNotifyPrefs(phone, { ...DEFAULT_NOTIFY_PREFS, quietHoursEnabled: false, smsAlerts: true });
 
     await createSos(app, { bloodGroup: "AB-", city: "Rawalpindi", contactPhone: uniquePhone() });
-
-    // The dev provider prints [SMS:console] — assert it was actually dispatched.
     await new Promise(r => setTimeout(r, 200));
-    const smsLines = smsSpy.mock.calls.map(c => String(c[0])).filter(l => l.startsWith("[SMS:console]"));
-    expect(smsLines.length).toBeGreaterThanOrEqual(1);
-    expect(smsLines.join(" ")).toContain("AB-");
+
+    // OTP flows legitimately use the console provider; donor alert SMS must
+    // not — no line carrying the donor-alert body may be printed.
+    const smsLines = smsSpy.mock.calls.map(c => String(c[0]));
+    expect(smsLines.filter(l => l.startsWith("[SMS:console]") && l.includes("BloodRadar:"))).toHaveLength(0);
+
+    // And the donor's own feed still delivered the in-app alert.
+    const mine = await pollMine(agent, 1);
+    expect(mine.length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps targeted alerts out of the public feed and read-all scoped to the owner", async () => {

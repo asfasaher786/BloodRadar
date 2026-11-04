@@ -10,5 +10,11 @@ export default defineConfig({
     include: ["backend/__tests__/**/*.test.ts"],
     testTimeout: 20000,
     hookTimeout: 30000,
+    // P0-2: dev auth shortcuts are opt-in. Tests exercise them heavily
+    // (devOtp hints), so the flag is on for the suite by default; the
+    // flag-off behaviour is covered explicitly in devAuthShortcuts.test.ts.
+    env: {
+      ALLOW_DEV_AUTH_SHORTCUTS: "true",
+    },
   },
 });

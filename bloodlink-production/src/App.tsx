@@ -29,6 +29,10 @@ import { BecomeDonorBand, TrustBand } from "./components/HomeBands";
 import Starfield from "./components/Starfield";
 import HeroMascot from "./components/HeroMascot";
 
+// P0-3: "Sample" badges are a dev/demo affordance. The production bundle
+// never renders them — and the production API never serves sample rows.
+const IS_PROD_BUILD = import.meta.env.PROD;
+
 // Code-split the heaviest widgets (Leaflet map bundle, charts, ML panel,
 // chatbot) so the first paint ships a small shell — each lazy chunk only
 // downloads when the user actually reaches that part of the page.
@@ -569,7 +573,7 @@ export default function App() {
                           <div className="flex items-center gap-1.5">
                             {!n.read && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--blood)' }} aria-hidden="true" />}
                             <span className="text-xs font-bold uppercase tracking-wide font-mono" style={{ color: 'var(--blood)' }}>{label}</span>
-                            {n.isSample && (
+                            {!IS_PROD_BUILD && n.isSample && (
                               <span className="text-xs font-mono px-1.5 py-0.5 rounded border shrink-0" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
                                 Sample data
                               </span>
@@ -901,6 +905,10 @@ export default function App() {
                     <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
                       <X className="w-4 h-4" /> Cancelled by requester
                     </div>
+                  ) : sos.status === 'Expired' ? (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>
+                      <Clock className="w-4 h-4" /> Expired — closed after 48 hours without an update
+                    </div>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-safe-soft text-safe-ink">
                       <CheckCircle2 className="w-4 h-4" /> Fulfilled · Lives Saved
@@ -972,7 +980,7 @@ export default function App() {
                   switch instant. */}
               {activeTab === 'hospitals' && (
                   <motion.div key="hospitals" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                    {hospitals.some(h => h.isSample) && (
+                    {!IS_PROD_BUILD && hospitals.some(h => h.isSample) && (
                       <div role="note" className="mb-4 p-3.5 rounded-xl flex items-start gap-2.5 bg-warn-soft border border-warn/30">
                         <Info className="w-4 h-4 shrink-0 mt-0.5 text-warn-ink" />
                         <p className="text-xs leading-relaxed text-warn-ink">
@@ -990,7 +998,7 @@ export default function App() {
                             <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{h.address}</div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0 ml-2">
-                            {h.isSample && <Badge tone="warn" mono>Sample</Badge>}
+                            {!IS_PROD_BUILD && h.isSample && <Badge tone="warn" mono>Sample</Badge>}
                             <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded border border-border text-muted">{h.city.slice(0, 3).toUpperCase()}</span>
                           </div>
                         </div>
@@ -1008,7 +1016,7 @@ export default function App() {
                         </div>
                         {h.stockLastUpdated && (
                           <div className="mt-2 text-xs font-mono text-muted">
-                            {h.isSample ? 'Sample data — call to confirm. ' : ''}Stock reviewed {formatReviewedDate(h.stockLastUpdated)}
+                            {!IS_PROD_BUILD && h.isSample ? 'Sample data — call to confirm. ' : ''}Stock reviewed {formatReviewedDate(h.stockLastUpdated)}
                           </div>
                         )}
                         <div className="mt-3 flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--blood)' }}>
@@ -1038,7 +1046,7 @@ export default function App() {
                 )}
                 {activeTab === 'camps' && (
                   <motion.div key="camps" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                    {camps.some(c => c.isSample) && (
+                    {!IS_PROD_BUILD && camps.some(c => c.isSample) && (
                       <div role="note" className="mb-4 p-3.5 rounded-xl flex items-start gap-2.5 bg-warn-soft border border-warn/30">
                         <Info className="w-4 h-4 shrink-0 mt-0.5 text-warn-ink" />
                         <p className="text-xs leading-relaxed text-warn-ink">
@@ -1052,7 +1060,7 @@ export default function App() {
                       <div key={c.id} className="p-4 rounded-xl border flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-mono font-bold px-2 py-0.5 rounded border bg-warn-soft border-warn/30 text-warn-ink">CAMP</span>
-                          {c.isSample && <Badge tone="warn" mono>Sample</Badge>}
+                          {!IS_PROD_BUILD && c.isSample && <Badge tone="warn" mono>Sample</Badge>}
                           <span className="text-xs ml-auto" style={{ color: 'var(--muted)' }}>{c.city}</span>
                         </div>
                         <div className="font-display font-bold text-sm mb-1" style={{ color: 'var(--ink)' }}>{c.title}</div>

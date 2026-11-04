@@ -21,6 +21,21 @@ export async function requestOtp(app: Express, phone: string): Promise<string> {
   return res.body.devOtp as string;
 }
 
+// Requester phone proof (P0-1): request the requester-door OTP, verify it,
+// and return the 15-minute proof token an anonymous SOS must present.
+export async function requestProof(app: Express, phone: string): Promise<string> {
+  const req = await request(app).post("/api/requester/otp/request").send({ phone });
+  if (req.status !== 200) {
+    throw new Error(`Requester OTP request failed (${req.status}): ${JSON.stringify(req.body)}`);
+  }
+  const code = req.body.devOtp as string;
+  const ver = await request(app).post("/api/requester/otp/verify").send({ phone, code });
+  if (ver.status !== 200) {
+    throw new Error(`Requester OTP verify failed (${ver.status}): ${JSON.stringify(ver.body)}`);
+  }
+  return ver.body.proofToken as string;
+}
+
 // Full register flow: request OTP → verify with registerAsDonor. Returns a
 // supertest agent whose cookie jar carries the resulting httpOnly session.
 export async function registerDonor(
@@ -57,21 +72,26 @@ export async function loginAs(app: Express, phone: string) {
 }
 
 // Creates an anonymous SOS (requesters never log in) and returns the
-// one-time requesterCode plus the public request payload.
+// one-time requesterCode plus the public request payload. P0-1: the
+// contact phone is OTP-verified first and the proof token travels with
+// the request, exactly like the real UI flow.
 export async function createSos(
   app: Express,
   opts: { bloodGroup?: string; city?: string; contactPhone?: string } = {}
 ) {
+  const contactPhone = opts.contactPhone || uniquePhone();
+  const proofToken = await requestProof(app, contactPhone);
   const res = await request(app)
     .post("/api/emergencies")
     .send({
       patientName: "Test Patient",
       bloodGroup: opts.bloodGroup || "O-",
       unitsNeeded: 1,
-      contactPhone: opts.contactPhone || uniquePhone(),
+      contactPhone,
       reason: "Test emergency",
       urgency: "Immediate (SOS)",
       city: opts.city || "Islamabad",
+      proofToken,
     });
   if (res.status !== 200) {
     throw new Error(`SOS creation failed (${res.status}): ${JSON.stringify(res.body)}`);

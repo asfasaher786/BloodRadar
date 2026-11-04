@@ -4,13 +4,15 @@ import { API_BASE } from "../lib/api";
 import {
   AlertCircle, Heart, Users, BellRing, CheckCircle2, PhoneCall,
   XCircle, Eye, Zap, Minus, Plus, Siren, Phone, Check,
-  ChevronDown, Search, MessageCircle, HelpCircle, Building2
+  ChevronDown, Search, MessageCircle, HelpCircle, Building2, ShieldCheck,
+  Clock
 } from "lucide-react";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import Select from "./ui/Select";
 import Badge from "./ui/Badge";
+import Input from "./ui/Input";
 import TopMatches from "./TopMatches";
 
 interface SOSRequestFormProps {
@@ -25,7 +27,7 @@ interface MySos {
   request: any;
 }
 
-type RevealStatus = 'waiting' | 'donor-accepted' | 'fulfilled' | 'cancelled';
+type RevealStatus = 'waiting' | 'donor-accepted' | 'fulfilled' | 'cancelled' | 'expired';
 interface RevealState {
   status: RevealStatus;
   donor?: { name: string; bloodGroup: string; phone: string; city: string } | null;
@@ -33,6 +35,47 @@ interface RevealState {
 }
 
 const SOS_STORAGE_KEY = "bloodradar_my_sos";
+// P0-1: the requester's phone proof — a 15-minute server-issued token that
+// travels with the SOS POST. Cached per phone so a re-submit (or a second
+// request for another patient) doesn't ask for a new code.
+const PROOF_STORAGE_KEY = "bloodradar_requester_proof";
+const PROOF_TTL_MS = 15 * 60 * 1000;
+
+interface CachedProof {
+  phone: string;
+  token: string;
+  expiresAt: number;
+}
+
+function readCachedProof(): CachedProof | null {
+  try {
+    const raw = localStorage.getItem(PROOF_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p.phone !== "string" || typeof p.token !== "string" || typeof p.expiresAt !== "number") return null;
+    return p as CachedProof;
+  } catch { return null; }
+}
+
+function cacheProof(proof: CachedProof): void {
+  try { localStorage.setItem(PROOF_STORAGE_KEY, JSON.stringify(proof)); } catch { /* storage full/blocked — proof lives only this session */ }
+}
+
+function clearCachedProof(): void {
+  try { localStorage.removeItem(PROOF_STORAGE_KEY); } catch { /* ignore */ }
+}
+
+/** Valid proof for this exact phone string, with a 30s safety margin. */
+function validProofTokenFor(phone: string): string | null {
+  const p = readCachedProof();
+  if (!p || p.phone !== phone) return null;
+  if (Date.now() > p.expiresAt - 30_000) {
+    clearCachedProof();
+    return null;
+  }
+  return p.token;
+}
+
 const BLOOD_GROUPS = ["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"] as const;
 const HOTLINES = [
   { name: "Rescue 1122", number: "1122" },
@@ -59,6 +102,19 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
   const [submitPhase, setSubmitPhase] = useState<'idle' | 'loading' | 'success'>('idle');
   const [error, setError] = useState("");
 
+  // P0-1 inline phone-verification stage. When the requester has no fresh
+  // proof for their number, the form swaps to a "enter the code we texted"
+  // step; verifying auto-submits the request that was waiting.
+  const [verifyStage, setVerifyStage] = useState(false);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [devOtpHint, setDevOtpHint] = useState("");
+  // Phone we already sent a code to this session. Re-entering the stage for
+  // the SAME number keeps the existing code (and its hint) instead of
+  // re-sending — the per-phone 60s cooldown would otherwise block resends.
+  const [sentForPhone, setSentForPhone] = useState("");
+
   // Hospital combobox state.
   const [hospitalQuery, setHospitalQuery] = useState("");
   const [hospitalOpen, setHospitalOpen] = useState(false);
@@ -71,8 +127,9 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
   const phoneRef = useRef<HTMLInputElement>(null);
   const groupChipsRef = useRef<HTMLFieldSetElement>(null);
 
-  // Requester-side tracking of their live SOS (anonymous — proven by the
-  // one-time code the server issued). Survives page refresh via localStorage.
+  // Requester-side tracking of their live SOS. The requester identity is
+  // their phone (proven by the P0-1 OTP proof) plus the one-time code the
+  // server issued for this request. Survives page refresh via localStorage.
   const [mySos, setMySos] = useState<MySos | null>(null);
   const [reveal, setReveal] = useState<RevealState>({ status: 'waiting' });
   const [matchingCount, setMatchingCount] = useState<number | null>(null);
@@ -107,6 +164,12 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
         if (data.status === "fulfilled") {
           setReveal({ status: 'donor-accepted', donor: data.donor || null, acceptedAt: data.acceptedAt });
           stopPolling();
+        } else if (data.status === "expired") {
+          // P0-5: the SOS silently closed after 48h. Keep polling — if it's
+          // re-opened (here or on another device) the panel self-heals.
+          setReveal((prev) => (prev.status === 'expired' ? prev : { status: 'expired' }));
+        } else if (data.status === "waiting") {
+          setReveal((prev) => (prev.status === 'expired' ? { status: 'waiting' } : prev));
         }
       } catch { /* transient network error — next poll retries */ }
     };
@@ -139,6 +202,8 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
       if (data.status === "fulfilled") {
         setReveal({ status: 'donor-accepted', donor: data.donor || null, acceptedAt: data.acceptedAt });
         stopPolling();
+      } else if (data.status === "expired") {
+        setReveal((prev) => (prev.status === 'expired' ? prev : { status: 'expired' }));
       }
     } catch { /* transient — interval will retry */ }
   };
@@ -172,16 +237,9 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
     return "";
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // Validate all required fields; focus the first error.
-    const pErr = validatePhone(contactPhone);
-    const gErr = bloodGroup === "" ? "Please pick the blood group from your lab report — or ask the ward. O- and O+ are the most common." : "";
-    setPhoneError(pErr);
-    setGroupError(gErr);
-    if (pErr) { phoneRef.current?.focus(); return; }
-    if (gErr) { groupChipsRef.current?.focus(); return; }
-
+  // P0-1: the actual SOS POST. Always carries the proof token that binds
+  // this request to the verified contact phone.
+  const postSos = async (proofToken: string) => {
     setError("");
     setSubmitPhase('loading');
 
@@ -198,6 +256,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           reason: emergencyMode ? "" : reason,
           urgency: emergencyMode ? "Immediate (SOS)" : urgency,
           city,
+          proofToken,
         })
       });
 
@@ -236,7 +295,18 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
         setSubmitPhase('success');
         onSuccess();
       } else {
-        const d = await response.json();
+        const d = await response.json().catch(() => ({}));
+        // P0-1: the server rejected our proof (expired / cleared server-side).
+        // Drop the stale cache entry and re-verify instead of stranding the
+        // requester on an error they can't fix.
+        if (response.status === 401 && d.code === "PROOF_REQUIRED") {
+          clearCachedProof();
+          setSubmitPhase('idle');
+          // Force a fresh code for this number (the old one is long dead).
+          setSentForPhone("");
+          enterVerifyStage();
+          return;
+        }
         setError(d.error || "Failed to submit request.");
         setSubmitPhase('idle');
       }
@@ -244,6 +314,98 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
       setError("Couldn't send. Check your connection and retry.");
       setSubmitPhase('idle');
     }
+  };
+
+  // Sends the verification code to the contact phone (requester door — same
+  // OTP store as login, so one cooldown per phone across both).
+  const sendSosOtp = async () => {
+    setVerifyBusy(true);
+    setVerifyError("");
+    setDevOtpHint("");
+    try {
+      const res = await fetch(`${API_BASE}/api/requester/otp/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: contactPhone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setDevOtpHint(data.devOtp || "");
+      } else {
+        setVerifyError(data.error || "Couldn't send the code. Check the number and try again.");
+      }
+    } catch {
+      setVerifyError("Network error. Try again.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  // Enters the verify stage. Auto-sends the code only the first time for a
+  // given number — re-entering keeps the code already on its way (the 60s
+  // per-phone cooldown would reject an immediate resend).
+  const enterVerifyStage = () => {
+    setVerifyError("");
+    setVerifyCode("");
+    setVerifyStage(true);
+    if (sentForPhone !== contactPhone) {
+      setDevOtpHint("");
+      setSentForPhone(contactPhone);
+      sendSosOtp();
+    }
+  };
+
+  // Verifies the code, caches the 15-minute proof, and submits the SOS that
+  // was waiting — one tap, nothing re-typed.
+  const handleVerify = async () => {
+    if (verifyCode.trim().length !== 6) return;
+    setVerifyBusy(true);
+    setVerifyError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/requester/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: contactPhone, code: verifyCode.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.proofToken) {
+        cacheProof({
+          phone: contactPhone,
+          token: data.proofToken,
+          expiresAt: Date.now() + (data.expiresInSeconds ? data.expiresInSeconds * 1000 : PROOF_TTL_MS),
+        });
+        setVerifyStage(false);
+        await postSos(data.proofToken);
+      } else {
+        setVerifyError(data.error || "Incorrect code. Try again.");
+      }
+    } catch {
+      setVerifyError("Network error. Try again.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Validate all required fields; focus the first error.
+    const pErr = validatePhone(contactPhone);
+    const gErr = bloodGroup === "" ? "Please pick the blood group from your lab report — or ask the ward. O- and O+ are the most common." : "";
+    setPhoneError(pErr);
+    setGroupError(gErr);
+    if (pErr) { phoneRef.current?.focus(); return; }
+    if (gErr) { groupChipsRef.current?.focus(); return; }
+
+    // P0-1: without a fresh proof for this number, swap to the inline
+    // verification step and auto-send the code. The SOS posts right after
+    // the code checks out.
+    const token = validProofTokenFor(contactPhone);
+    if (!token) {
+      enterVerifyStage();
+      return;
+    }
+
+    await postSos(token);
   };
 
   // Requester asks the platform to notify matching donors. Donors get inbox
@@ -303,6 +465,34 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
     }
   };
 
+  // P0-5: an SOS closes itself after 48 hours without an update. The
+  // requester re-confirms it's still needed and gets a fresh window —
+  // proof of ownership stays the one-time requester code.
+  const handleExtendSos = async () => {
+    if (!mySos) return;
+    setClosing(true);
+    setPanelMsg("");
+    try {
+      const response = await fetch(`${API_BASE}/api/emergencies/${mySos.id}/extend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requesterCode: mySos.code })
+      });
+      if (response.ok) {
+        setReveal({ status: 'waiting' });
+        setPanelMsg("");
+        // Re-persist so a refresh right after re-opening keeps the live view.
+        localStorage.setItem(SOS_STORAGE_KEY, JSON.stringify(mySos));
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setPanelMsg(data.error || "Couldn't re-open the request.");
+      }
+    } catch {
+      setPanelMsg("Network error. Try again.");
+    } finally {
+      setClosing(false);
+    }
+  };
   const shareUrl = mySos ? `https://wa.me/?text=${encodeURIComponent(buildShareMessage(mySos.request, mySos.myPhone))}` : "#";
   const noMatches = matchingCount !== null && matchingCount === 0;
   const selectedHospital = hospitals.find(h => h.id === hospitalId) || null;
@@ -333,10 +523,10 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           {mySos && reveal.status === 'waiting' && <Badge tone="blood" mono><span className="w-1.5 h-1.5 rounded-full bg-blood animate-pulse" /> LIVE</Badge>}
         </span>
       }
-      subtitle="Three taps, under 30 seconds. We alert compatible donors nearby."
+      subtitle="One quick code to your phone keeps requests real. We alert compatible donors nearby."
     >
       {/* Success state — a full screen, not a toast. */}
-      {submitPhase === 'success' && mySos && reveal.status !== 'cancelled' && (
+      {submitPhase === 'success' && mySos && reveal.status !== 'cancelled' && reveal.status !== 'expired' && (
         <div role="status" aria-live="polite" className="text-center py-6 fade-in">
           <div className="relative mx-auto w-20 h-20 mb-5">
             <span className="absolute inset-0 rounded-full border-2 border-blood/30 success-ripple pointer-events-none" aria-hidden="true" />
@@ -387,7 +577,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
       )}
 
       {/* ── Live requester panel — notify donors, watch status, close loop ── */}
-      {mySos && reveal.status !== 'cancelled' && (
+      {mySos && reveal.status !== 'cancelled' && reveal.status !== 'expired' && (
         <div
           id="sos-live-panel"
           role="status"
@@ -529,7 +719,82 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
         </div>
       )}
 
+      {/* P0-5: expired → re-confirm the need, or start fresh */}
+      {mySos && reveal.status === 'expired' && (
+        <div role="status" aria-live="polite" className="mb-5 p-4 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} />
+            <p className="text-sm flex-1" style={{ color: 'var(--muted)' }}>
+              This request closed after 48 hours without an update.
+            </p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="primary" onClick={handleExtendSos} loading={closing} icon={<BellRing className="w-4 h-4" />}>
+              Still need blood? Re-open request
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearMySos}>Start a new request</Button>
+          </div>
+          {panelMsg && <p className="text-xs mt-2" style={{ color: 'var(--blood-dark)' }}>{panelMsg}</p>}
+        </div>
+      )}
+
       {submitPhase !== 'success' && (
+      verifyStage ? (
+        /* ── P0-1 phone verification step — replaces the form until the
+           code checks out, then the waiting request auto-submits. ── */
+        <div id="sos-verify-stage" role="status" aria-live="polite" className="space-y-4 text-sm">
+          <div className="p-3 rounded-xl border flex items-start gap-2.5" style={{ background: 'var(--blood-tint)', borderColor: 'rgb(196 18 48 / 0.25)' }}>
+            <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--blood-dark)' }} aria-hidden="true" />
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink)' }}>
+              One quick check before we broadcast: we texted a 6-digit code to{" "}
+              <strong>{contactPhone}</strong>. It proves the request is real —
+              donors can't trust a board anyone can spam.
+            </p>
+          </div>
+          <Input
+            id="input-sos-otp"
+            label="Verification code"
+            placeholder="6-digit code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            icon={<ShieldCheck className="w-4 h-4" />}
+            value={verifyCode}
+            onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => { if (e.key === "Enter" && verifyCode.trim().length === 6) handleVerify(); }}
+            disabled={verifyBusy}
+            hint={devOtpHint ? `Test mode — your code is ${devOtpHint}` : "Enter the 6-digit code we texted you."}
+          />
+          {verifyError && (
+            <p role="alert" className="text-xs font-medium" style={{ color: 'var(--danger-text)' }}>{verifyError}</p>
+          )}
+          <div className="space-y-2">
+            <Button
+              size="lg"
+              fullWidth
+              loading={verifyBusy}
+              disabled={verifyCode.trim().length !== 6}
+              icon={<ShieldCheck className="w-4 h-4" />}
+              onClick={handleVerify}
+              className="tracking-wide"
+            >
+              Verify &amp; send request
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={() => { setVerifyStage(false); setVerifyError(""); }}
+              >
+                Change number
+              </Button>
+              <Button variant="ghost" size="md" fullWidth loading={verifyBusy} onClick={sendSosOtp}>
+                Resend code
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4 text-sm">
         {error && (
           <div className="p-3 rounded-xl flex items-center gap-2 text-sm border" role="alert" style={{ background: 'var(--blood-tint)', borderColor: 'rgb(196 18 48 / 0.25)', color: 'var(--danger-text)' }}>
@@ -547,7 +812,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
             <Zap className="w-4 h-4 shrink-0" style={{ color: 'var(--warn-text)' }} aria-hidden="true" />
             <div>
               <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Emergency mode</p>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>Essentials only — broadcast in under 30 seconds</p>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>Essentials only — one quick phone check, then it's live</p>
             </div>
           </div>
           <button
@@ -634,7 +899,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
             </p>
           ) : (
             <p id="sos-phone-hint" className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>
-              Your number stays private — donors only see it after they accept your request.
+              Private until a donor accepts — we text you a one-time code to verify it's really you.
             </p>
           )}
         </div>
@@ -820,6 +1085,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           {submitPhase === 'loading' ? "Sending…" : "Send request"}
         </Button>
       </form>
+      )
       )}
     </Card>
   );

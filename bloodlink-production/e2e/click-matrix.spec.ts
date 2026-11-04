@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { registerDonorViaUi, createSosViaUi, uniquePhone, readDevOtp } from "./helpers";
+import { registerDonorViaUi, createSosViaUi, completeSosVerification, uniquePhone, readDevOtp } from "./helpers";
 
 // Phase 4 click matrix. Every interactive element on the page that is NOT
 // already exercised by the other specs gets a real click here, with a
@@ -15,7 +15,7 @@ import { registerDonorViaUi, createSosViaUi, uniquePhone, readDevOtp } from "./h
 
 test.describe("click matrix — header & chrome", () => {
   test("skip-to-content link: Tab reveals it, Enter jumps to main", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const skip = page.locator('a[href="#main-content"]');
     // The skip link is the document's first tabbable element (it renders at
     // the very top of the tree), but the SOS phone input autofocuses on load
@@ -31,7 +31,7 @@ test.describe("click matrix — header & chrome", () => {
   });
 
   test("hero CTAs navigate to their sections", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.getByRole("link", { name: "View Live Emergencies" }).click();
     await expect(page).toHaveURL(/#emergencies-board$/);
     await page.getByRole("link", { name: "Request blood now" }).click();
@@ -40,7 +40,7 @@ test.describe("click matrix — header & chrome", () => {
 
   test("mobile menu opens, exposes all four anchors, closes on navigate", async ({ page, viewport }) => {
     test.skip((viewport?.width ?? 0) >= 768, "mobile menu is hidden on desktop");
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     // Scope to the banner: the hero CTAs carry the same link names below.
     const menu = page.getByRole("banner");
     const menuBtn = menu.getByRole("button", { name: "Open menu" });
@@ -68,7 +68,7 @@ test.describe("click matrix — header & chrome", () => {
 
   test("log in modal: phone OTP signs in and the Log in button disappears", async ({ page, viewport }) => {
     test.skip((viewport?.width ?? 1280) < 768, "the Log in button is desktop-only");
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Log in" }).click();
     const modal = page.locator("#login-modal");
     await expect(modal).toBeVisible();
@@ -93,7 +93,7 @@ test.describe("click matrix — header & chrome", () => {
     // Signed in: the Log in button is gone, and the session survives a
     // reload (fresh phone → session without a donor profile, still logged in).
     await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
-    await page.reload();
+    await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
   });
 
@@ -162,7 +162,7 @@ test.describe("click matrix — header & chrome", () => {
   test("bell opens the notifications panel: SOS row navigates, mark-all-read persists", async ({ page }) => {
     // Same webkit budget as the ticker test (SOS creation + panel steps).
     test.setTimeout(180_000);
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // Own SOS → own unread public notification, independent of the ticker
     // test's Dismiss (which clears all unread server-side).
@@ -188,14 +188,14 @@ test.describe("click matrix — header & chrome", () => {
     await expect(panel).toBeVisible();
     await panel.getByRole("button", { name: "Mark all as read" }).click();
     await expect(page.locator('button[aria-label^="Notifications — "]')).toHaveCount(0, { timeout: 10_000 });
-    await page.reload();
+    await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator('button[aria-label^="Notifications — "]')).toHaveCount(0);
   });
 });
 
 test.describe("click matrix — directory tabs", () => {
   test("tabs switch panels (mouse + keyboard), hospital card selects, camp register increments", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Sample data — not live inventory.")).toBeVisible();
 
     // Keyboard arrow navigation on the tablist (WCAG pattern).
@@ -212,10 +212,14 @@ test.describe("click matrix — directory tabs", () => {
     await expect(registerBtn).not.toHaveText(before, { timeout: 10_000 });
 
     await page.locator("#tab-analytics").click();
-    await expect(page.getByRole("heading", { name: "Twin Cities Donor Blood Type Mix" })).toBeVisible();
+    // 30s: the analytics panel's chart mounts after the tab switch, and in
+    // the full gate (2026-11-05) webkit took >10s under dev-mode load —
+    // the failure snapshot showed the tab selected and the heading present
+    // only after the default timeout had already expired.
+    await expect(page.getByRole("heading", { name: "Twin Cities Donor Blood Type Mix" })).toBeVisible({ timeout: 30_000 });
     await page.locator("#tab-ml-playground").click();
     // Heading role: the tab button carries the same label text.
-    await expect(page.getByRole("heading", { name: "Real ML Lab" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Real ML Lab" })).toBeVisible({ timeout: 30_000 });
 
     // Back to hospitals: clicking a card marks it selected (highlighted).
     await page.locator("#tab-hospitals").click();
@@ -228,7 +232,7 @@ test.describe("click matrix — directory tabs", () => {
 
 test.describe("click matrix — SOS form controls", () => {
   test("emergency switch, units stepper, blood + city chips all toggle state", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const sosCard = page.locator("#sos-request-form-card");
 
     // Emergency mode is ON by default (essentials-only, broadcast fast).
@@ -263,7 +267,7 @@ test.describe("click matrix — SOS form controls", () => {
 
     // ── Requester-panel closure buttons (Cancel SOS → New request).
     await page.locator("#input-sos-phone").fill(uniquePhone());
-    await page.locator("#btn-submit-sos-request").click();
+    await completeSosVerification(page);
     await expect(
       page.locator("#sos-request-form-card").getByText(/compatible donors (matched|notified)/)
     ).toBeVisible({ timeout: 15_000 });
@@ -274,7 +278,7 @@ test.describe("click matrix — SOS form controls", () => {
 
     // ── Fulfilled → Done clears the live panel entirely.
     await page.locator("#input-sos-phone").fill(uniquePhone());
-    await page.locator("#btn-submit-sos-request").click();
+    await completeSosVerification(page);
     await expect(
       page.locator("#sos-request-form-card").getByText(/compatible donors (matched|notified)/)
     ).toBeVisible({ timeout: 15_000 });
@@ -287,7 +291,7 @@ test.describe("click matrix — SOS form controls", () => {
 
 test.describe("click matrix — donor inbox", () => {
   test("empty state shows for a fresh donor; refresh and retry stay honest", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await registerDonorViaUi(page, {
       name: `E2E Inbox Donor ${Date.now()}`,
       bloodGroup: "B+",
@@ -316,7 +320,7 @@ test.describe("click matrix — donor inbox", () => {
 
 test.describe("click matrix — donor search", () => {
   test("available-only toggle, blood/city filters, protected number, reviews form", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const module = page.locator("#donor-search-module-card");
     const list = module.locator(".max-h-\\[500px\\] > div");
 
@@ -375,12 +379,15 @@ test.describe("click matrix — map, chatbot, org portal", () => {
     page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
     page.on("pageerror", (err) => errors.push(String(err)));
 
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const map = page.locator("#leaflet-live-map-container.leaflet-container");
-    await expect(map).toBeVisible({ timeout: 20_000 });
+    // Leaflet init can be slow on a cold browser cache (first-run parse of
+    // the vendored bundle + OSM tile fetch under ISP slowness, observed in
+    // the full gate before vendoring). Kept generous on purpose.
+    await expect(map).toBeVisible({ timeout: 60_000 });
     // Let the first tiles settle before driving zoom — interacting mid-load
     // trips a known Leaflet internal error in some engines.
-    await page.locator(".leaflet-tile-loaded").first().waitFor({ timeout: 20_000 });
+    await page.locator(".leaflet-tile-loaded").first().waitFor({ timeout: 60_000 });
     await page.waitForTimeout(500);
 
     await page.locator("#btn-zoom-islamabad").click();
@@ -403,7 +410,7 @@ test.describe("click matrix — map, chatbot, org portal", () => {
   });
 
   test("assistant FAB toggles the dialog open and closed", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const fab = page.locator("#btn-toggle-ai-chat");
     await expect(fab).toHaveAttribute("aria-expanded", "false");
     await fab.click();
@@ -417,8 +424,8 @@ test.describe("click matrix — map, chatbot, org portal", () => {
   });
 
   test("org portal: fresh phone logs in and files an application", async ({ page }) => {
-    test.setTimeout(90_000); // OTP round-trips + slow first paint on low-end emulation
-    await page.goto("/");
+    test.setTimeout(180_000); // OTP round-trips + slow first paint on low-end emulation
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const portal = page.locator("#org-portal");
     const phone = uniquePhone();
     // Login done step-by-step here (not via loginViaUi) so the OTP-stage
@@ -453,7 +460,7 @@ test.describe("click matrix — map, chatbot, org portal", () => {
 
   test("mobile details sheet opens for a selected hospital and closes", async ({ page, viewport }) => {
     test.skip((viewport?.width ?? 0) >= 768, "bottom sheet replaces Leaflet popups on mobile");
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator('button:has-text("Show on map")').first().click();
     const sheet = page.locator("#map-mobile-sheet");
     await expect(sheet).toBeVisible({ timeout: 15_000 });

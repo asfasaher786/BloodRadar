@@ -6,7 +6,7 @@ import { registerDonorViaUi, loginViaUi, uniquePhone } from "./helpers";
 
 test.describe("donor lifecycle", () => {
   test("registers a donor through the full stepper with OTP", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const donor = await registerDonorViaUi(page, { bloodGroup: "O+", city: "Rawalpindi" });
 
     // The streak/gamification card is the logged-in donor's home.
@@ -16,7 +16,7 @@ test.describe("donor lifecycle", () => {
   });
 
   test("logs a donation, then rejects an immediate repeat with the 90-day rule", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await registerDonorViaUi(page, { bloodGroup: "O+", city: "Rawalpindi" });
 
     await page.locator("#btn-log-donation").click();
@@ -28,7 +28,7 @@ test.describe("donor lifecycle", () => {
   });
 
   test("toggles availability between AVAILABLE and OFFLINE", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await registerDonorViaUi(page, { bloodGroup: "O+", city: "Rawalpindi" });
 
     const toggle = page.locator("#btn-toggle-availability-streak");

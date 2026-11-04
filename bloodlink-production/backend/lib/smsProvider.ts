@@ -89,6 +89,14 @@ class CustomGatewaySmsProvider implements SmsProvider {
 
 let provider: SmsProvider | null = null;
 
+/** P0-6: donor SMS alerts stay gated off until a live provider is connected.
+ * "console" only prints to server logs — it must never be presented as a
+ * working delivery channel to donors. OTP codes are a separate concern and
+ * keep using the console provider in development. */
+export function hasLiveSmsProvider(): boolean {
+  return CONFIG.SMS_PROVIDER !== "console";
+}
+
 export function getSmsProvider(): SmsProvider {
   if (provider) return provider;
   switch (CONFIG.SMS_PROVIDER) {

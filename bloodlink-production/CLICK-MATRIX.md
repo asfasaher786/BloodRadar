@@ -41,7 +41,12 @@ mechanism, noted inline.
 | 20 | Units − / + | Click | Count updates (1 → 2 → 1), `aria-live` value | same test |
 | 21 | Blood-group chips ×8 | Click | `aria-pressed` toggles; exactly one selected | same test (AB+, O−); `sos.spec` (B−); helpers (O−) |
 | 22 | City chips ×2 | Click | `aria-pressed` toggles; exactly one selected | same test |
-| 23 | Phone input + "Broadcast SOS Alert" | Fill + click | Creates SOS; LIVE requester panel appears with matching-donor count | `sos.spec` |
+| 23 | Phone input + "Send request" | Fill + click | P0-1: with no fresh proof for the number, the inline verify stage opens and the code is auto-sent; after the code checks out the SOS posts and the LIVE requester panel appears with the matching-donor count | `sos.spec` + `matching.spec` + `viewports.spec` (shared helper) |
+| 23a | SOS verify stage — auto-send | Submit without proof | Real POST `/api/requester/otp/request`; dev hint shown (test-only); SOS NOT created yet (stage replaces the form) | `sos.spec` → "verifies the requester's phone…" |
+| 23b | Verify stage — code input + "Verify & send request" | Fill + click | Real POST `/api/requester/otp/verify`; 15-minute proof cached per phone; the waiting SOS posts automatically | same test |
+| 23c | Verify stage — Change number | Click | Returns to the form with nothing posted; re-submitting the SAME phone reuses the code already sent (the 60s cooldown is never triggered by navigation) | same test |
+| 23d | Verify stage — Resend code | Click | Re-requests within the 60s cooldown → honest "Please wait Ns" message; the original code still verifies | same test |
+| 23e | Cached proof re-submit | Fill + click | Same phone within the 15-minute window skips the verify stage entirely and posts directly | same test |
 | 24 | Requester panel — Notify Matching Donors | Click | Explicit privacy gate: contact requests created, donors notified | `matching.spec` |
 | 25 | Requester panel — Cancel SOS | Click | Status → cancelled with honest copy | `click-matrix.spec` → "emergency switch…" |
 | 26 | Cancelled panel — New request | Click | Clears state, form returns | same test |

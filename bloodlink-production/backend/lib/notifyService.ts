@@ -1,7 +1,7 @@
 import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "./bloodCompatibility";
 import { getDonors, addTargetedNotification, getPushSubscriptionForPhone, removePushSubscription } from "../services/dbService";
-import { getSmsProvider } from "./smsProvider";
+import { getSmsProvider, hasLiveSmsProvider } from "./smsProvider";
 import { maskPhone } from "./phoneUtils";
 import { pushConfigured, sendWebPush } from "./pushService";
 
@@ -125,7 +125,10 @@ export async function notifyMatchingDonors(sos: any, now: Date = new Date()): Pr
         stats.notifiedInApp++;
       }
 
-      if (prefs.smsAlerts) {
+      // P0-6: smsAlerts is gated twice — at save time (coerced off) and
+      // here at delivery, so pre-existing rows with smsAlerts:true can't
+      // trigger fake "deliveries" through the console provider.
+      if (prefs.smsAlerts && hasLiveSmsProvider()) {
         const ok = await getSmsProvider().sendSms(
           donor.phone,
           `BloodRadar: ${sos.unitsNeeded} unit${sos.unitsNeeded === 1 ? "" : "s"} of ${sos.bloodGroup} needed${sos.hospitalName ? ` at ${sos.hospitalName}` : ""} (${sos.city || "your city"}). Reply YES to accept, or open BloodRadar to respond.`

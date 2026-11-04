@@ -3,6 +3,9 @@ import { Hospital, BloodCamp } from "../types";
 import { Building, Crosshair, MapPin, Phone, Calendar, X } from "lucide-react";
 import { SUPPORTED_CITIES, CITY_CENTER_COORDINATES, DEFAULT_CITY } from "../lib/regions";
 
+// P0-3: sample-data notes are a dev/demo affordance — never in production.
+const IS_PROD_BUILD = import.meta.env.PROD;
+
 interface MapComponentProps {
   hospitals: Hospital[];
   camps: BloodCamp[];
@@ -156,7 +159,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
           <h3 style="font-weight:700;font-size:14px;color:var(--color-blood, #C41230);margin:0 0 4px;">${h.name}</h3>
           <p style="font-size:12px;color:var(--color-muted, #6B6578);margin:0 0 4px;">${h.address}</p>
           <p style="font-size:12px;font-weight:600;margin:0;color:var(--color-safe-ink, #007A57);">${h.emergencyHours}</p>
-          ${h.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample data — not live inventory</p>' : ''}
+          ${!IS_PROD_BUILD && h.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample data — not live inventory</p>' : ''}
         </div>
       `);
 
@@ -192,7 +195,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
           <h3 style="font-weight:700;font-size:14px;color:var(--color-warn-ink, #8A5A00);margin:0 0 4px;">${c.title}</h3>
           <p style="font-size:12px;color:var(--color-muted, #6B6578);margin:0 0 4px;">${c.location}</p>
           <p style="font-size:12px;font-weight:600;margin:0;color:var(--color-ink, #1a1421);">${c.date} (${c.time})</p>
-          ${c.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample listing — confirm with the organizer</p>' : ''}
+          ${!IS_PROD_BUILD && c.isSample ? '<p style="font-size:11px;margin:4px 0 0;color:var(--color-warn-ink, #8A5A00);font-weight:600;">Sample listing — confirm with the organizer</p>' : ''}
         </div>
       `);
 
@@ -392,7 +395,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
               )}
             </div>
 
-            {'isSample' in sheetItem && sheetItem.isSample && (
+            {!IS_PROD_BUILD && 'isSample' in sheetItem && sheetItem.isSample && (
               <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--warn-ink)' }}>
                 {isHospitalSheet
                   ? 'Sample data — not live inventory. Call to confirm stock.'

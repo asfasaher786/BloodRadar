@@ -114,12 +114,79 @@ export async function updateDonorField(phone: string, patch: Record<string, any>
   if (idx !== -1) Object.assign(memoryDonors[idx], patch);
 }
 
-export async function getAcceptedContactRequests(): Promise<any[]> {
+// P0-3: sample/demo rows (seeded with isSample: true) are excluded from
+// every shared read in production unless the caller explicitly opts in —
+// which only admin routes do. Fail-closed: a new read path that forgets
+// the flag serves real data only, never demo data.
+// P0-5: pending SOS requests auto-expire after SOS_EXPIRY_HOURS (default
+// 48h). Read at call time from env so tests can shorten the window.
+function sosTtlMs(): number {
+  const raw = Number(process.env.SOS_EXPIRY_HOURS);
+  const hours = Number.isFinite(raw) && raw > 0 ? raw : 48;
+  return hours * 60 * 60 * 1000;
+}
+
+function isStalePending(row: any, now: number): boolean {
+  if (row.status !== "Pending") return false;
+  // expiresAt is stored as an ISO string — parse before comparing, and fall
+  // back to createdAt + TTL for legacy/seeded rows that predate P0-5.
+  let base = 0;
+  if (row.expiresAt) {
+    const t = new Date(row.expiresAt).getTime();
+    if (Number.isFinite(t)) base = t;
+  }
+  if (!base && row.createdAt) {
+    const t = new Date(row.createdAt).getTime();
+    if (Number.isFinite(t)) base = t + sosTtlMs();
+  }
+  return base > 0 && now > base;
+}
+
+// Lazy expiry: applies the 48h auto-expiry to pending rows on every read —
+// no cron required, and the board never shows a stale "live" request.
+// Returns the list with freshly expired rows flipped to "Expired" (and
+// persisted), plus their ids for the caller to broadcast.
+async function expireStale(list: any[]): Promise<string[]> {
+  const now = Date.now();
+  const expiredIds: string[] = [];
+  for (const row of list) {
+    if (isStalePending(row, now)) {
+      expiredIds.push(row.id);
+      row.status = "Expired";
+      row.expiredAt = new Date(now).toISOString();
+    }
+  }
+  if (expiredIds.length > 0) {
+    const { mode, db } = await getDb();
+    if (mode === "mongodb" && db) {
+      for (const id of expiredIds) {
+        await db.collection("emergencies").updateOne(
+          { id },
+          { $set: { status: "Expired", expiredAt: new Date(now).toISOString() } }
+        );
+      }
+    }
+    // In-memory rows were mutated in place above.
+  }
+  return expiredIds;
+}
+
+function publicRows<T extends { isSample?: boolean }>(rows: T[], includeSample?: boolean): T[] {
+  if (includeSample || !CONFIG.IS_PROD) return rows;
+  return rows.filter((r) => r.isSample !== true);
+}
+
+function publicQuery(includeSample?: boolean): Record<string, unknown> {
+  if (includeSample || !CONFIG.IS_PROD) return {};
+  return { isSample: { $ne: true } };
+}
+
+export async function getAcceptedContactRequests(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
-    return await db.collection("contactrequests").find({ status: "accepted" }).toArray();
+    return await db.collection("contactrequests").find({ status: "accepted", ...publicQuery(opts.includeSample) }).toArray();
   }
-  return memoryContactRequests.filter(c => c.status === "accepted");
+  return publicRows(memoryContactRequests.filter(c => c.status === "accepted"), opts.includeSample);
 }
 
 
@@ -231,6 +298,9 @@ async function ensureIndexes(database: Db) {
     await database.collection("otps").createIndex({ phone: 1 }, { unique: true });
     // TTL: OTP records self-destruct ~5 minutes after expiry.
     await database.collection("otps").createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+    // Requester proof tokens (P0-1): unique per token, TTL after expiry.
+    await database.collection("requester_proofs").createIndex({ tokenHash: 1 }, { unique: true });
+    await database.collection("requester_proofs").createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
     await database.collection("contactrequests").createIndex({ donorPhone: 1, status: 1 });
     await database.collection("contactrequests").createIndex({ sosId: 1, status: 1 });
     await database.collection("auditlog").createIndex({ timestamp: -1 });
@@ -262,12 +332,12 @@ export async function addUser(user: any): Promise<void> {
   memoryUsers.push(user);
 }
 
-export async function getDonors(): Promise<any[]> {
+export async function getDonors(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
-    return await db.collection("donors").find({}).toArray();
+    return await db.collection("donors").find(publicQuery(opts.includeSample)).toArray();
   }
-  return memoryDonors;
+  return publicRows(memoryDonors, opts.includeSample);
 }
 
 export async function getDonorByPhone(phone: string): Promise<any> {
@@ -330,20 +400,20 @@ export async function addDonorReview(donorId: string, review: any): Promise<any>
   return null;
 }
 
-export async function getHospitals(): Promise<any[]> {
+export async function getHospitals(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
-    return await db.collection("hospitals").find({}).toArray();
+    return await db.collection("hospitals").find(publicQuery(opts.includeSample)).toArray();
   }
-  return memoryHospitals;
+  return publicRows(memoryHospitals, opts.includeSample);
 }
 
-export async function getCamps(): Promise<any[]> {
+export async function getCamps(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
-    return await db.collection("camps").find({}).toArray();
+    return await db.collection("camps").find(publicQuery(opts.includeSample)).toArray();
   }
-  return memoryCamps;
+  return publicRows(memoryCamps, opts.includeSample);
 }
 
 // ---------------------------------------------------------------
@@ -464,12 +534,16 @@ export async function incrementCampRegistration(campId: string): Promise<any> {
   return null;
 }
 
-export async function getEmergencies(): Promise<any[]> {
+export async function getEmergencies(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
+  let rows: any[];
   if (mode === "mongodb" && db) {
-    return await db.collection("emergencies").find({}).sort({ createdAt: -1 }).toArray();
+    rows = await db.collection("emergencies").find(publicQuery(opts.includeSample)).sort({ createdAt: -1 }).toArray();
+  } else {
+    rows = [...memoryEmergencies];
   }
-  return memoryEmergencies;
+  await expireStale(rows);
+  return publicRows(rows, opts.includeSample);
 }
 
 export async function addEmergency(sos: any): Promise<void> {
@@ -547,6 +621,9 @@ export async function createEmergencyRequest(input) {
     status: "Pending",
     city: requestCity,
     createdAt: new Date().toISOString(),
+    // P0-5: auto-expiry window. The requester can re-confirm ("still need
+    // blood") to extend; without it the request closes itself.
+    expiresAt: new Date(Date.now() + sosTtlMs()).toISOString(),
     matchingDonorsCount: potentialMatches.length,
     requesterCode,
     // Organization portal (Phase 3): requests posted on behalf of a patient
@@ -570,7 +647,7 @@ export async function createEmergencyRequest(input) {
   return { sos, requesterCode };
 }
 
-export async function updateEmergencyStatus(sosId: string, status: "Pending" | "Fulfilled" | "Cancelled"): Promise<any> {
+export async function updateEmergencyStatus(sosId: string, status: "Pending" | "Fulfilled" | "Cancelled" | "Expired"): Promise<any> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
     const result = await db.collection("emergencies").findOneAndUpdate(
@@ -598,14 +675,50 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
   return null;
 }
 
-export async function getNotifications(): Promise<any[]> {
+// P0-5 "still need blood?" re-confirm: the requester (or an admin) revives
+// an expired request or extends a still-pending one for another full
+// window. Fulfilled/Cancelled are terminal — a re-confirm can never reopen
+// them, and the caller enforces ownership via the requester code.
+export async function extendEmergency(sosId: string): Promise<{ error: string } | { sos: any }> {
+  const { mode, db } = await getDb();
+  const expiresAt = new Date(Date.now() + sosTtlMs()).toISOString();
+  if (mode === "mongodb" && db) {
+    const row = await db.collection("emergencies").findOne({ id: sosId });
+    if (!row) return { error: "Emergency request not found" };
+    if (row.status !== "Pending" && row.status !== "Expired") {
+      return { error: `This request was already ${row.status} and can't be re-opened.` };
+    }
+    const result = await db.collection("emergencies").findOneAndUpdate(
+      { id: sosId },
+      { $set: { status: "Pending", expiresAt } },
+      { returnDocument: "after" }
+    );
+    const sos = result && (result as any).value ? (result as any).value : result;
+    return { sos };
+  }
+  const idx = memoryEmergencies.findIndex(e => e.id === sosId);
+  if (idx === -1) return { error: "Emergency request not found" };
+  const row = memoryEmergencies[idx];
+  if (row.status !== "Pending" && row.status !== "Expired") {
+    return { error: `This request was already ${row.status} and can't be re-opened.` };
+  }
+  row.status = "Pending";
+  row.expiresAt = expiresAt;
+  return { sos: row };
+}
+
+export async function getNotifications(opts: { includeSample?: boolean } = {}): Promise<any[]> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
     // The public feed excludes donor-targeted alerts — those carry a
     // targetPhone and belong only to that donor's private /mine feed.
-    return await db.collection("notifications").find({ targetPhone: { $exists: false } }).sort({ timestamp: -1 }).toArray();
+    return await db
+      .collection("notifications")
+      .find({ targetPhone: { $exists: false }, ...publicQuery(opts.includeSample) })
+      .sort({ timestamp: -1 })
+      .toArray();
   }
-  return memoryNotifications.filter(n => !n.targetPhone);
+  return publicRows(memoryNotifications.filter(n => !n.targetPhone), opts.includeSample);
 }
 
 export async function addNotification(notification: any): Promise<void> {
@@ -717,12 +830,25 @@ export async function removePushSubscription(phone: string): Promise<void> {
 // audit trail. Nobody's full phone number is public anywhere.
 // ---------------------------------------------------------------
 
-export async function getEmergencyById(sosId: string): Promise<any> {
+export async function getEmergencyById(sosId: string, opts: { includeSample?: boolean } = {}): Promise<any> {
   const { mode, db } = await getDb();
+  let row: any = null;
   if (mode === "mongodb" && db) {
-    return await db.collection("emergencies").findOne({ id: sosId });
+    row = await db.collection("emergencies").findOne({ id: sosId });
+  } else {
+    row = memoryEmergencies.find(e => e.id === sosId) || null;
   }
-  return memoryEmergencies.find(e => e.id === sosId) || null;
+  if (!row) return null;
+  // Single-row lazy expiry (P0-5): a pending request past its window is
+  // flipped before it can drive any further flow.
+  if (isStalePending(row, Date.now())) {
+    row.status = "Expired";
+    row.expiredAt = new Date().toISOString();
+    if (mode === "mongodb" && db) {
+      await db.collection("emergencies").updateOne({ id: sosId }, { $set: { status: "Expired", expiredAt: row.expiredAt } });
+    }
+  }
+  return publicRows([row], opts.includeSample)[0] || null;
 }
 
 export async function deleteEmergency(sosId: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { Page, expect } from "@playwright/test";
+import { Locator, Page, expect } from "@playwright/test";
 
 // Shared E2E helpers. The dev server's console SMS provider echoes the OTP
 // into the response and the UI shows it as "Test mode — your code: XXXXXX"
@@ -6,6 +6,22 @@ import { Page, expect } from "@playwright/test";
 // instead of calling the API, so they exercise the real UI paths.
 
 let counter = 0;
+
+/**
+ * Dispatches a click through the DOM instead of synthetic mouse coordinates.
+ * The live-alert bar / notification ticker can insert content above the SOS
+ * form mid-click; the browser's scroll anchoring then shifts the button in
+ * the viewport between Playwright's hit-test and the click dispatch, and the
+ * coordinate click misses silently (proven via trace screencast pixel diffs:
+ * the button moved 28px in the dispatch window). element.click() fires the
+ * same React handler without depending on visual position — use it where a
+ * test asserts STATE TRANSITIONS. Real coordinate clicks stay covered by the
+ * viewports + click-matrix specs. Disabled buttons still swallow the click,
+ * so assert enabled first where that matters.
+ */
+export async function jsClick(locator: Locator): Promise<void> {
+  await locator.evaluate((el) => (el as HTMLElement).click());
+}
 
 /** Unique phone per call so repeated runs never collide in the shared dev DB. */
 export function uniquePhone(): string {
@@ -79,8 +95,26 @@ export async function loginViaUi(page: Page, phone: string) {
 }
 
 /**
- * Fills and submits the SOS form (only the phone is required) and waits
- * for the LIVE requester panel with the matching-donor count.
+ * P0-1: submits the SOS form and completes the inline phone-verification
+ * step (reads the dev-mode code hint, fills it, verifies). The SOS posts
+ * automatically right after the code checks out.
+ */
+export async function completeSosVerification(page: Page): Promise<void> {
+  await page.locator("#btn-submit-sos-request").click();
+  const card = page.locator("#sos-request-form-card");
+  const hint = card.locator("text=/Test mode — your code(?: is|:)?\\s+(\\d{6})/");
+  await expect(hint).toBeVisible({ timeout: 10_000 });
+  const text = await hint.textContent();
+  const code = text?.match(/(\d{6})/)?.[1];
+  if (!code) throw new Error(`Could not read SOS dev OTP from hint: ${text}`);
+  await card.locator("#input-sos-otp").fill(code);
+  await card.getByRole("button", { name: "Verify & send request" }).click();
+}
+
+/**
+ * Fills and submits the SOS form (only the phone is required), passes the
+ * P0-1 phone verification, and waits for the LIVE requester panel with the
+ * matching-donor count.
  */
 export async function createSosViaUi(
   page: Page,
@@ -90,7 +124,7 @@ export async function createSosViaUi(
   const bloodGroup = opts.bloodGroup || "O-";
   await page.locator("#input-sos-phone").fill(phone);
   await page.locator(`[id="chip-blood-${bloodGroup}"]`).click();
-  await page.locator("#btn-submit-sos-request").click();
+  await completeSosVerification(page);
   await expect(
     page.locator("#sos-request-form-card").getByText(/compatible donors (matched|notified)/)
   ).toBeVisible({ timeout: 15_000 });

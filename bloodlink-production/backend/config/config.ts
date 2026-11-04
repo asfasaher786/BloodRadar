@@ -28,6 +28,12 @@ function parsePhoneList(value: string | undefined): string[] {
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isProd = NODE_ENV === "production";
 
+// P0-2: dev auth shortcuts (test-mode OTP hints in API responses, demo
+// admin phone auto-grant) are OFF unless the operator explicitly opts in.
+// Being non-production is NOT enough on its own — a misconfigured prod
+// deploy running with NODE_ENV unset would otherwise leak dev shortcuts.
+const devAuthShortcuts = !isProd && process.env.ALLOW_DEV_AUTH_SHORTCUTS === "true";
+
 const problems: string[] = [];
 
 if (isProd) {
@@ -36,6 +42,12 @@ if (isProd) {
   }
   if (!process.env.FRONTEND_URL) {
     problems.push("FRONTEND_URL is required in production (used for strict CORS and cookie security)");
+  }
+  // P0-4: production must never silently serve from the in-memory store —
+  // a deploy that lost its MONGO_URI would otherwise boot with zero real
+  // data. The vitest runner is exempt so prod-mode behaviour can be tested.
+  if (!process.env.MONGO_URI && process.env.VITEST !== "true") {
+    problems.push("MONGO_URI is required in production — the in-memory fallback is for development only.");
   }
   if (process.env.SMS_PROVIDER === "twilio" && (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER)) {
     problems.push("SMS_PROVIDER=twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER");
@@ -76,14 +88,18 @@ export const CONFIG = {
   DEFAULT_COUNTRY_CODE: process.env.COUNTRY_CODE || "92",
   // OTP-verified phone numbers granted elevated roles (comma-separated env
   // lists). Roles are assigned at login when the verified phone matches one
-  // of these lists. In dev only, the seeded demo admin's phone is granted
-  // admin so the moderation flows can be exercised locally; production
-  // starts with empty lists and requires explicit env configuration.
+  // of these lists. With ALLOW_DEV_AUTH_SHORTCUTS=true in dev only, the
+  // seeded demo admin's phone is also granted admin so the moderation flows
+  // can be exercised locally; production (and dev without the flag) starts
+  // with empty lists and requires explicit env configuration.
   ADMIN_PHONES: parsePhoneList(process.env.ADMIN_PHONES).concat(
-    isProd ? [] : ["+923331234567"] // seedData demo admin (Dr. Safeer)
+    devAuthShortcuts ? ["+923331234567"] : [] // seedData demo admin (Dr. Safeer)
   ),
   STAFF_PHONES: parsePhoneList(process.env.STAFF_PHONES),
   NGO_PHONES: parsePhoneList(process.env.NGO_PHONES),
+  // P0-2: dev-only auth shortcuts gate. True only when NODE_ENV is not
+  // production AND the operator set ALLOW_DEV_AUTH_SHORTCUTS=true.
+  ALLOW_DEV_AUTH_SHORTCUTS: devAuthShortcuts,
   // Reminder job gate: disabled by default in dev/test, enable with env var.
   ENABLE_DONATION_REMINDERS: process.env.ENABLE_DONATION_REMINDERS === "true",
   // Web push (VAPID). All three keys must be present for push to work;

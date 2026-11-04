@@ -88,7 +88,8 @@ router.post("/orgs/:id/reject", authMiddleware, roleMiddleware("admin"), async (
 // they never leave this endpoint.
 router.get("/reported", authMiddleware, roleMiddleware("admin"), async (_req, res, next) => {
   try {
-    const all = await getEmergencies();
+    // Admin moderation sees sample rows too (P0-3 opt-in).
+    const all = await getEmergencies({ includeSample: true });
     const reported = all
       .filter(e => Array.isArray(e.reports) && e.reports.length > 0)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
@@ -107,7 +108,7 @@ router.get("/reported", authMiddleware, roleMiddleware("admin"), async (_req, re
 router.post("/reported/:id/dismiss", authMiddleware, roleMiddleware("admin"), async (req, res, next) => {
   try {
     const id = String(req.params.id || "").trim();
-    const sos = await getEmergencyById(id);
+    const sos = await getEmergencyById(id, { includeSample: true });
     if (!sos) return res.status(404).json({ error: "Emergency request not found" });
     const result = await clearEmergencyReports(id);
     if (!result.ok) return res.status(500).json({ error: "Could not clear the reports" });
@@ -127,10 +128,10 @@ router.post("/reported/:id/dismiss", authMiddleware, roleMiddleware("admin"), as
 router.get("/metrics", authMiddleware, roleMiddleware("admin"), async (_req, res, next) => {
   try {
     const [emergencies, donors, orgs, acceptedRequests] = await Promise.all([
-      getEmergencies(),
-      getDonors(),
+      getEmergencies({ includeSample: true }),
+      getDonors({ includeSample: true }),
       getOrganizations(),
-      getAcceptedContactRequests(),
+      getAcceptedContactRequests({ includeSample: true }),
     ]);
 
     const fulfilled = emergencies.filter(e => e.status === "Fulfilled");
@@ -139,7 +140,7 @@ router.get("/metrics", authMiddleware, roleMiddleware("admin"), async (_req, res
 
     const responseTimesMs: number[] = [];
     for (const a of acceptedRequests) {
-      const sos = await getEmergencyById(a.sosId);
+      const sos = await getEmergencyById(a.sosId, { includeSample: true });
       if (!sos || !sos.createdAt || !a.acceptedAt) continue;
       const ms = new Date(a.acceptedAt).getTime() - new Date(sos.createdAt).getTime();
       if (ms >= 0) responseTimesMs.push(ms);
@@ -171,7 +172,8 @@ router.get("/metrics", authMiddleware, roleMiddleware("admin"), async (_req, res
 // identify a requester. Admin-only, downloaded as an attachment.
 router.get("/export.csv", authMiddleware, roleMiddleware("admin"), async (_req, res, next) => {
   try {
-    const all = await getEmergencies();
+    // The CSV carries an isSample column, so sample rows are included.
+    const all = await getEmergencies({ includeSample: true });
     const header = ["id", "createdAt", "fulfilledAt", "bloodGroup", "unitsNeeded", "city", "hospitalName", "urgency", "status", "postedBy", "isSample"];
     const esc = (v: any) => {
       const s = String(v ?? "");
