@@ -56,3 +56,54 @@ describe("chat triage — honest AI labeling", () => {
     expect(res.body.reply.text).toContain("Compatibility");
   });
 });
+
+// P2-5: anonymous visitors used to share one "default-session" history
+// bucket. Session ids are now generated server-side (crypto-random) and the
+// response carries them so clients can echo them back.
+describe("chat session isolation (Phase 2)", () => {
+  const app = createApp();
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  it("generates a fresh server-side sessionId when none is sent", async () => {
+    const res = await request(app).post("/api/chat").send({ message: "hello anonymous" });
+    expect(res.status).toBe(200);
+    expect(res.body.sessionId).toMatch(UUID_RE);
+  });
+
+  it("gives two anonymous visitors separate sessions with separate history", async () => {
+    const a = await request(app).post("/api/chat").send({ message: "alpha private note" });
+    const b = await request(app).post("/api/chat").send({ message: "beta private note" });
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.sessionId).toMatch(UUID_RE);
+    expect(b.body.sessionId).toMatch(UUID_RE);
+    expect(a.body.sessionId).not.toBe(b.body.sessionId);
+
+    // B's history contains B's own message and nothing of A's.
+    const texts = b.body.history.map((m: any) => m.text);
+    expect(texts).toContain("beta private note");
+    expect(texts).not.toContain("alpha private note");
+  });
+
+  it("replaces the legacy shared session buckets with a private one", async () => {
+    for (const legacy of ["default-session", "bloodradar_session_user"]) {
+      const res = await request(app).post("/api/chat").send({ message: "legacy client", sessionId: legacy });
+      expect(res.status).toBe(200);
+      expect(res.body.sessionId).toMatch(UUID_RE);
+      expect(res.body.sessionId).not.toBe(legacy);
+    }
+  });
+
+  it("keeps history scoped to an echoed server session id", async () => {
+    const first = await request(app).post("/api/chat").send({ message: "first turn" });
+    expect(first.status).toBe(200);
+    const sid = first.body.sessionId;
+
+    const second = await request(app).post("/api/chat").send({ message: "second turn", sessionId: sid });
+    expect(second.status).toBe(200);
+    expect(second.body.sessionId).toBe(sid);
+    const texts = second.body.history.map((m: any) => m.text);
+    expect(texts).toContain("first turn");
+    expect(texts).toContain("second turn");
+  });
+});

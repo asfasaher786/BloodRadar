@@ -1,11 +1,18 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { CONFIG } from "../config/config";
 import { normalizePhone } from "../lib/phoneUtils";
 import { sanitizeText } from "../lib/sanitize";
 import { sendOtpToPhone, verifyOtp } from "../services/otpService";
 import { addDonor, getDonorByPhone, computeNextEligibleDate, getApprovedOrganizationForPhone } from "../services/dbService";
+import {
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshTokenByJti,
+} from "../services/refreshTokenStore";
 import { resolveCity, getCityCenter } from "../config/regions";
+import { resolveNeighbourhood } from "../config/neighbourhoods";
 import {
   AUTH_COOKIE_NAMES,
   cookieOptions,
@@ -42,6 +49,8 @@ const verifyOtpSchema = z.object({
   bloodGroup: z.string().trim().regex(BLOOD_GROUP_RE, "Blood group must look like A+, B-, O+").optional(),
   city: z.string().trim().max(50).optional(),
   location: z.string().trim().max(120).optional(),
+  // P2-4: consented coarse location — a neighbourhood picked from the list.
+  area: z.string().trim().max(80).optional(),
 });
 
 // Staff roles are granted to OTP-verified phones listed in env config —
@@ -67,9 +76,12 @@ async function resolveRoleForPhoneWithOrgs(phone: string): Promise<Role> {
   return "donor";
 }
 
-function setAuthCookies(res: any, phone: string, role: Role): void {
+// P2-8: every refresh token is registered server-side under its jti, so it
+// can be rotated on use and revoked on logout or theft.
+async function setAuthCookies(res: any, phone: string, role: Role): Promise<void> {
   const accessToken = signAccessToken({ sub: phone, phone, role });
-  const refreshToken = signRefreshToken({ sub: phone, role });
+  const refreshRow = await issueRefreshToken(phone);
+  const refreshToken = signRefreshToken({ sub: phone, role, jti: refreshRow.jti });
   res.cookie(AUTH_COOKIE_NAMES.access, accessToken, cookieOptions(CONFIG.ACCESS_TOKEN_TTL_SECONDS));
   res.cookie(AUTH_COOKIE_NAMES.refresh, refreshToken, cookieOptions(CONFIG.REFRESH_TOKEN_TTL_SECONDS));
 }
@@ -113,7 +125,7 @@ router.post("/otp/verify", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid request" });
     }
-    const { code, registerAsDonor, name, bloodGroup, city, location } = parsed.data;
+    const { code, registerAsDonor, name, bloodGroup, city, location, area } = parsed.data;
     const phone = normalizePhone(parsed.data.phone);
 
     const verified = await verifyOtp(phone, code);
@@ -129,15 +141,22 @@ router.post("/otp/verify", async (req, res, next) => {
       }
       const donorCity = resolveCity(city || undefined);
       const center = getCityCenter(donorCity);
+      // P2-4: the neighbourhood dropdown is the consented coarse location.
+      // Its centroid replaces "city centre + random noise" for real
+      // distance-based matching; unknown values fall back to the centre.
+      const areaInput = sanitizeText(area || "", 80);
+      const neighbourhood = areaInput ? resolveNeighbourhood(donorCity, areaInput) : null;
+      const areaName = neighbourhood ? neighbourhood.name : (areaInput || "City Central");
       donor = {
-        id: "dnr-" + Date.now(),
+        id: "dnr-" + crypto.randomUUID(),
         name: sanitizeText(name, 60),
         bloodGroup,
         phone,
         city: donorCity,
-        location: sanitizeText(location || "", 120) || "City Central",
-        latitude: center.latitude + (Math.random() - 0.5) * 0.05,
-        longitude: center.longitude + (Math.random() - 0.5) * 0.05,
+        area: areaName,
+        location: sanitizeText(location || "", 120) || areaName,
+        latitude: neighbourhood ? neighbourhood.latitude : center.latitude + (Math.random() - 0.5) * 0.05,
+        longitude: neighbourhood ? neighbourhood.longitude : center.longitude + (Math.random() - 0.5) * 0.05,
         isAvailable: true,
         isVerified: true,
         stats: { donationsCount: 0, streakCount: 0, livesSaved: 0 },
@@ -149,7 +168,7 @@ router.post("/otp/verify", async (req, res, next) => {
     }
 
     const role = await resolveRoleForPhoneWithOrgs(phone);
-    setAuthCookies(res, phone, role);
+    await setAuthCookies(res, phone, role);
 
     res.json({ success: true, user: { phone, role, donor: enrichDonor(donor) } });
   } catch (err) {
@@ -165,19 +184,39 @@ router.post("/refresh", async (req, res, next) => {
     }
     const payload = verifyRefreshToken(token);
     if (!payload) {
+      res.clearCookie(AUTH_COOKIE_NAMES.access, { path: "/" });
+      res.clearCookie(AUTH_COOKIE_NAMES.refresh, { path: "/" });
+      return res.status(401).json({ error: "Session expired. Please log in again." });
+    }
+    // P2-8: consume the presented token; rotation issues a brand-new one.
+    // A replay of an already-rotated token revokes the session family.
+    const rotated = await rotateRefreshToken(payload.jti, payload.sub);
+    if (!rotated.ok) {
+      res.clearCookie(AUTH_COOKIE_NAMES.access, { path: "/" });
       res.clearCookie(AUTH_COOKIE_NAMES.refresh, { path: "/" });
       return res.status(401).json({ error: "Session expired. Please log in again." });
     }
     const donor = await getDonorByPhone(payload.sub);
     const role = await resolveRoleForPhoneWithOrgs(payload.sub);
-    setAuthCookies(res, payload.sub, role);
+    await setAuthCookies(res, payload.sub, role);
     res.json({ success: true, user: { phone: payload.sub, role, donor: enrichDonor(donor) } });
   } catch (err) {
     next(err);
   }
 });
 
-router.post("/logout", (_req, res) => {
+router.post("/logout", async (req, res, next) => {
+  try {
+    // P2-8: revoke the refresh token server-side, not just in the browser.
+    // A stolen cookie can no longer mint sessions after logout.
+    const token = req.cookies?.[AUTH_COOKIE_NAMES.refresh];
+    if (token) {
+      const payload = verifyRefreshToken(token);
+      if (payload) await revokeRefreshTokenByJti(payload.jti);
+    }
+  } catch (err) {
+    next(err);
+  }
   res.clearCookie(AUTH_COOKIE_NAMES.access, { path: "/" });
   res.clearCookie(AUTH_COOKIE_NAMES.refresh, { path: "/" });
   res.json({ success: true });

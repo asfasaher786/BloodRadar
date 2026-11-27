@@ -40,7 +40,7 @@ export async function requestProof(app: Express, phone: string): Promise<string>
 // supertest agent whose cookie jar carries the resulting httpOnly session.
 export async function registerDonor(
   app: Express,
-  opts: { phone?: string; bloodGroup?: string; city?: string; name?: string } = {}
+  opts: { phone?: string; bloodGroup?: string; city?: string; name?: string; area?: string } = {}
 ) {
   const phone = opts.phone || uniquePhone();
   const agent = request.agent(app);
@@ -52,7 +52,9 @@ export async function registerDonor(
     name: opts.name || "Test Donor",
     bloodGroup: opts.bloodGroup || "O-",
     city: opts.city || "Islamabad",
-    location: "G-10/4",
+    // P2-4: `area` is the neighbourhood dropdown value; legacy tests pass
+    // free-text `location` (still accepted as a display fallback).
+    ...(opts.area !== undefined ? { area: opts.area } : { location: "G-10/4" }),
   });
   if (res.status !== 200) {
     throw new Error(`Verify failed (${res.status}): ${JSON.stringify(res.body)}`);
@@ -77,7 +79,7 @@ export async function loginAs(app: Express, phone: string) {
 // the request, exactly like the real UI flow.
 export async function createSos(
   app: Express,
-  opts: { bloodGroup?: string; city?: string; contactPhone?: string } = {}
+  opts: { bloodGroup?: string; city?: string; contactPhone?: string; neighbourhood?: string } = {}
 ) {
   const contactPhone = opts.contactPhone || uniquePhone();
   const proofToken = await requestProof(app, contactPhone);
@@ -91,6 +93,7 @@ export async function createSos(
       reason: "Test emergency",
       urgency: "Immediate (SOS)",
       city: opts.city || "Islamabad",
+      ...(opts.neighbourhood ? { neighbourhood: opts.neighbourhood } : {}),
       proofToken,
     });
   if (res.status !== 200) {

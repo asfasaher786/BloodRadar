@@ -20,14 +20,12 @@ export interface DonorReview {
 
 export interface Donor {
   id: string;
-  name: string;
+  name: string; // public listings show first name + last initial only
   bloodGroup: string;
-  phone: string;
+  phone: string; // always masked on public listings
   phoneMasked?: boolean;
   city: string; // any city in SUPPORTED_CITIES (see src/lib/regions.ts)
-  location: string;
-  latitude: number;
-  longitude: number;
+  area: string; // coarse area/neighbourhood text — never coordinates
   isAvailable: boolean;
   isVerified: boolean;
   lastDonationDate?: string;
@@ -38,6 +36,10 @@ export interface Donor {
     livesSaved: number;
   };
   badges: string[];
+  reviewsSummary?: {
+    count: number;
+    average: number | null;
+  };
   reviews?: DonorReview[];
 }
 
@@ -102,6 +104,14 @@ export interface EmergencyRequest {
   orgId?: string;
   orgName?: string;
   postedBy?: 'organization';
+  // P2-4: coarse neighbourhood the requester chose (from the supported list
+  // for their city) — used for distance-based donor matching, never a street
+  // address. Absent on legacy rows.
+  neighbourhood?: string;
+  // P2-4: anchor coordinates used for nearest-first donor ranking. Present
+  // only when a neighbourhood (or hospital with coordinates) was set.
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface DonationHistory {

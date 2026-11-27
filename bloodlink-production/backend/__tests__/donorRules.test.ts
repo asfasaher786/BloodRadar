@@ -16,6 +16,39 @@ describe("donor privacy on public listings", () => {
       expect(d.phone.replace(/\D/g, "").length).toBeLessThan(12);
     }
   });
+
+  it("returns only the allow-listed fields (P2-7): no coordinates, full names or dates", async () => {
+    const app = createApp();
+    const res = await request(app).get("/api/donors");
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const d of res.body) {
+      // Forbidden keys never appear on the public list.
+      expect(d).not.toHaveProperty("latitude");
+      expect(d).not.toHaveProperty("longitude");
+      expect(d).not.toHaveProperty("location");
+      expect(d).not.toHaveProperty("lastDonationDate");
+      expect(d).not.toHaveProperty("nextEligibleDate");
+      expect(d).not.toHaveProperty("createdAt");
+      expect(d).not.toHaveProperty("reviews");
+      // The allow-list is present.
+      expect(d).toHaveProperty("id");
+      expect(d).toHaveProperty("name");
+      expect(d).toHaveProperty("bloodGroup");
+      expect(d).toHaveProperty("city");
+      expect(d).toHaveProperty("area");
+      expect(d).toHaveProperty("isAvailable");
+      expect(d).toHaveProperty("isVerified");
+      expect(d).toHaveProperty("reviewsSummary");
+      // Full names never appear: at most "Firstname L." (two tokens).
+      const parts = d.name.trim().split(/\s+/);
+      expect(parts.length).toBeLessThanOrEqual(2);
+      if (parts.length === 2) expect(parts[1]).toMatch(/^[A-Z]\.$/);
+      // Review content (patient names, comments) stays off the list.
+      expect(JSON.stringify(d)).not.toContain("patientName");
+      expect(JSON.stringify(d)).not.toContain("comment");
+    }
+  });
 });
 
 describe("donor self-service (session identity, never body identity)", () => {
@@ -75,12 +108,40 @@ describe("donor self-service (session identity, never body identity)", () => {
       comment: "Reached in 20 minutes. Life saver.",
     });
     expect(good.status).toBe(200);
+    // P2-7: the POST response never echoes the full donor object.
+    expect(good.body).not.toHaveProperty("donor");
 
     const bad = await request(app).post(`/api/donors/${donorId}/reviews`).send({
       rating: 9,
       comment: "invalid",
     });
     expect(bad.status).toBe(400);
+  });
+
+  it("scrubs reviewer names on the per-donor reviews endpoint (P2-7)", async () => {
+    const app = createApp();
+    const { agent } = await registerDonor(app);
+    const me = await agent.get("/api/auth/me");
+    const donorId = me.body.user.donor.id;
+
+    await request(app).post(`/api/donors/${donorId}/reviews`).send({
+      patientName: "Grateful Patient",
+      rating: 5,
+      comment: "Reached in 20 minutes. Life saver.",
+    });
+
+    const res = await request(app).get(`/api/donors/${donorId}/reviews`);
+    expect(res.status).toBe(200);
+    expect(res.body.reviews.length).toBe(1);
+    const rev = res.body.reviews[0];
+    // Full third-party names never leave the server: "Grateful P." at most.
+    expect(rev.patientName).toBe("Grateful P.");
+    expect(JSON.stringify(res.body)).not.toContain("Grateful Patient");
+    expect(rev).not.toHaveProperty("phone");
+
+    // Unknown donors 404 instead of leaking a roster.
+    const missing = await request(app).get("/api/donors/nope/reviews");
+    expect(missing.status).toBe(404);
   });
 
   it("returns the donor inbox only to donor sessions", async () => {

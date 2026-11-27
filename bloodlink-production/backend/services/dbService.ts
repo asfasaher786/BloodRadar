@@ -4,6 +4,8 @@ import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "../lib/bloodCompatibility";
 import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { resolveCity } from "../config/regions";
+import { resolveNeighbourhood } from "../config/neighbourhoods";
+import { haversineKm } from "../lib/geo";
 import type { DonorResponseStats } from "./donorRanking";
 import {
   preseededUsers,
@@ -88,12 +90,52 @@ export async function logDonation(phone): Promise<{ error: string } | { donor: a
     return { ok: true as const, stats: updatedStats, badges: computeBadges(newDonationsCount), lastDonationDate, nextEligibleDate: computeNextEligibleDate(lastDonationDate) };
   };
   if (mode === "mongodb" && db) {
+    // Atomic conditional update: the 90-day eligibility check lives in the
+    // FILTER and the counters increment via pipeline expressions, so there
+    // is no read-then-write window for concurrent logDonation calls to
+    // double-count. A pipeline update lets the badges stage read the
+    // post-increment count inside the same atomic operation.
+    const today = new Date().toISOString().split("T")[0];
+    const cutoffDate = new Date(Date.now() - MIN_DAYS_BETWEEN_DONATIONS * 86400000).toISOString().split("T")[0];
+    const badgeBranches = [
+      { case: { $gte: ["$stats.donationsCount", 20] }, then: ["First-Time Savior", "Steady Giver", "Life Saver", "Guardian Angel", "Legendary Donor"] },
+      { case: { $gte: ["$stats.donationsCount", 12] }, then: ["First-Time Savior", "Steady Giver", "Life Saver", "Guardian Angel"] },
+      { case: { $gte: ["$stats.donationsCount", 7] }, then: ["First-Time Savior", "Steady Giver", "Life Saver"] },
+      { case: { $gte: ["$stats.donationsCount", 3] }, then: ["First-Time Savior", "Steady Giver"] },
+      { case: { $gte: ["$stats.donationsCount", 1] }, then: ["First-Time Savior"] },
+    ];
+    const updated = await db.collection("donors").findOneAndUpdate(
+      {
+        phone,
+        $or: [
+          { lastDonationDate: { $exists: false } },
+          { lastDonationDate: { $lt: cutoffDate } },
+        ],
+      },
+      [
+        {
+          $set: {
+            "stats.donationsCount": { $add: [{ $ifNull: ["$stats.donationsCount", 0] }, 1] },
+            "stats.streakCount": { $add: [{ $ifNull: ["$stats.streakCount", 0] }, 1] },
+            "stats.livesSaved": { $add: [{ $ifNull: ["$stats.livesSaved", 0] }, 3] },
+            lastDonationDate: today,
+            nextEligibleDate: computeNextEligibleDate(today),
+          },
+        },
+        { $set: { badges: { $switch: { branches: badgeBranches, default: [] } } } },
+      ],
+      { returnDocument: "after" }
+    );
+    const value = updated && (updated as any).value ? (updated as any).value : updated;
+    if (value) return { donor: value };
+    // No match: either no donor with this phone, or the 90-day gap blocked
+    // the filter. Distinguish for an honest error message.
     const donor = await db.collection("donors").findOne({ phone });
     if (!donor) return { error: "No donor found with that phone number" };
-    const result = applyUpdate(donor);
-    if (!result.ok) return { error: result.error };
-    const updated = await db.collection("donors").findOneAndUpdate({ phone }, { $set: { stats: result.stats, badges: result.badges, lastDonationDate: result.lastDonationDate, nextEligibleDate: result.nextEligibleDate } }, { returnDocument: "after" });
-    return { donor: updated && (updated as any).value ? (updated as any).value : updated };
+    const daysSince = donor.lastDonationDate
+      ? (Date.now() - new Date(donor.lastDonationDate).getTime()) / 86400000
+      : Number.POSITIVE_INFINITY;
+    return { error: `You can log your next donation in about ${Math.ceil(MIN_DAYS_BETWEEN_DONATIONS - daysSince)} days — your body needs time to recover.` };
   }
   const idx = memoryDonors.findIndex(d => d.phone === phone);
   if (idx === -1) return { error: "No donor found with that phone number" };
@@ -303,10 +345,18 @@ async function ensureIndexes(database: Db) {
     await database.collection("requester_proofs").createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
     await database.collection("contactrequests").createIndex({ donorPhone: 1, status: 1 });
     await database.collection("contactrequests").createIndex({ sosId: 1, status: 1 });
+    // P2-3: one contact-request row per SOS+donor. The unique index makes a
+    // concurrent double-insert fail harmlessly (11000) instead of flooding
+    // the donor's inbox with duplicate rows.
+    await database.collection("contactrequests").createIndex({ sosId: 1, donorPhone: 1 }, { unique: true });
     await database.collection("auditlog").createIndex({ timestamp: -1 });
     await database.collection("organizations").createIndex({ contactPhone: 1 }, { unique: true });
     await database.collection("organizations").createIndex({ status: 1 });
     await database.collection("pushSubscriptions").createIndex({ phone: 1 }, { unique: true });
+    // P2-8: refresh-token registry — jti lookup for rotation/revocation, and
+    // a TTL index so expired rows self-destruct in MongoDB.
+    await database.collection("refreshtokens").createIndex({ jti: 1 }, { unique: true });
+    await database.collection("refreshtokens").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   } catch (error) {
     // Index creation failing must not kill the fallback path — log and move on.
     console.error("Failed to create MongoDB indexes:", error);
@@ -346,6 +396,14 @@ export async function getDonorByPhone(phone: string): Promise<any> {
     return await db.collection("donors").findOne({ phone });
   }
   return memoryDonors.find(d => d.phone === phone) || null;
+}
+
+export async function getDonorById(id: string): Promise<any> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("donors").findOne({ id });
+  }
+  return memoryDonors.find(d => d.id === id) || null;
 }
 
 export async function addDonor(donor: any): Promise<void> {
@@ -599,6 +657,11 @@ export async function createEmergencyRequest(input) {
   const hospitals = await getHospitals();
   const requestCity = resolveCity(input.city);
   const selectedHospital = hospitals.find(h => h.id === input.hospitalId) || hospitals.find(h => h.city === requestCity) || hospitals[0];
+  // P2-4: the requester's neighbourhood (when picked) anchors the SOS in
+  // real coordinates; otherwise the hospital's location is the anchor.
+  const neighbourhood = input.neighbourhood ? resolveNeighbourhood(requestCity, input.neighbourhood) : null;
+  const anchor = neighbourhood
+    || (selectedHospital && selectedHospital.latitude != null ? selectedHospital : null);
   const donors = await getDonors();
   const effectiveBloodGroup = input.bloodGroup || "O-";
   const eligibleDonorTypes = getEligibleDonorsForPatient(effectiveBloodGroup);
@@ -608,7 +671,7 @@ export async function createEmergencyRequest(input) {
   // in) can prove they are the same person who raised the SOS.
   const requesterCode = crypto.randomBytes(6).toString("hex");
   const sos = {
-    id: "sos-" + Date.now(),
+    id: "sos-" + crypto.randomUUID(),
     patientName: input.patientName || "Patient (name not given)",
     bloodGroup: effectiveBloodGroup,
     unitsNeeded: Number(input.unitsNeeded) || 1,
@@ -620,6 +683,10 @@ export async function createEmergencyRequest(input) {
     urgency: input.urgency || "Immediate (SOS)",
     status: "Pending",
     city: requestCity,
+    // P2-4: coarse anchor coordinates for distance-based matching — the
+    // consented neighbourhood centroid when given, else the hospital.
+    ...(neighbourhood ? { neighbourhood: neighbourhood.name } : {}),
+    ...(anchor && anchor.latitude != null ? { latitude: anchor.latitude, longitude: anchor.longitude } : {}),
     createdAt: new Date().toISOString(),
     // P0-5: auto-expiry window. The requester can re-confirm ("still need
     // blood") to extend; without it the request closes itself.
@@ -633,7 +700,7 @@ export async function createEmergencyRequest(input) {
   };
   await addEmergency(sos);
   await addNotification({
-    id: "notif-" + Date.now(),
+    id: "notif-" + crypto.randomUUID(),
     title: `🚨 SOS BROADCAST: ${sos.bloodGroup} Urgent Request`,
     // Masked on purpose: the public notification must never leak the
     // requester's full number. Reveal happens only through the
@@ -901,33 +968,101 @@ export async function clearEmergencyReports(sosId: string): Promise<{ ok: boolea
   return { ok: true, found: true };
 }
 
+// P2-3 re-send policy: repeat contact-request calls must not flood donor
+// inboxes. One open row per SOS+donor; a re-send needs a minimum gap and a
+// hard cap of MAX_CONTACT_RETRIES notification rounds per donor per SOS.
+const CONTACT_REQUERY_GAP_MS = 10 * 60 * 1000; // 10 minutes between re-sends
+const MAX_CONTACT_RETRIES = 3; // initial notify + at most 2 re-sends
+
 // Creates one open contact request per matching donor for the given SOS.
-// Returns the list of created requests (donor inbox items).
+// Idempotent per SOS+donor: repeat calls only re-send to donors whose open
+// request passed the gap and cap rules. Returns the list of requests that
+// were actually (re-)notified this round.
 export async function createContactRequestsForSos(sos: any): Promise<any[]> {
   const donors = await getDonors();
   const eligibleDonorTypes = getEligibleDonorsForPatient(sos.bloodGroup);
-  const matches = donors.filter(d =>
+  const inCity = donors.filter(d =>
     eligibleDonorTypes.includes(d.bloodGroup) &&
     d.isAvailable &&
     d.city.toLowerCase() === (sos.city || "").toLowerCase()
   );
-
-  const requests = matches.map((d, i) => ({
-    id: "cr-" + Date.now() + "-" + i,
-    sosId: sos.id,
-    requesterPhone: sos.contactPhone,
-    donorPhone: d.phone,
-    status: "open",
-    createdAt: new Date().toISOString(),
-  }));
+  // P2-4: notify nearest first — rank by real distance from the SOS anchor
+  // (neighbourhood centroid, or hospital coords when none was given).
+  // Donors without coordinates sort last (they can only be older rows).
+  const matches = inCity.sort((a, b) => {
+    const da = haversineKm(sos.latitude, sos.longitude, a.latitude, a.longitude);
+    const db = haversineKm(sos.latitude, sos.longitude, b.latitude, b.longitude);
+    if (da === null && db === null) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  });
 
   const { mode, db } = await getDb();
-  if (mode === "mongodb" && db) {
-    if (requests.length > 0) await db.collection("contactrequests").insertMany(requests);
-  } else {
-    memoryContactRequests.push(...requests);
+  const now = new Date().toISOString();
+  const notified: any[] = [];
+
+  for (const d of matches) {
+    let existing: any = null;
+    if (mode === "mongodb" && db) {
+      existing = await db.collection("contactrequests").findOne({ sosId: sos.id, donorPhone: d.phone });
+    } else {
+      existing = memoryContactRequests.find(c => c.sosId === sos.id && c.donorPhone === d.phone) || null;
+    }
+
+    if (existing) {
+      // Re-send rules: never re-open a closed request (a declined donor is
+      // never re-pestered), respect the minimum gap, and never exceed the
+      // per-donor cap.
+      const sendCount = existing.sendCount ?? 1;
+      const lastSentAt = existing.lastSentAt || existing.createdAt;
+      if (existing.status !== "open") continue;
+      if (sendCount >= MAX_CONTACT_RETRIES) continue;
+      const lastSentMs = new Date(lastSentAt).getTime();
+      if (!Number.isFinite(lastSentMs) || Date.now() - lastSentMs < CONTACT_REQUERY_GAP_MS) continue;
+
+      if (mode === "mongodb" && db) {
+        await db.collection("contactrequests").updateOne(
+          { id: existing.id },
+          { $set: { lastSentAt: now, notifiedAt: now }, $inc: { sendCount: 1 } }
+        );
+      } else {
+        const idx = memoryContactRequests.findIndex(c => c.id === existing.id);
+        memoryContactRequests[idx] = { ...memoryContactRequests[idx], lastSentAt: now, notifiedAt: now, sendCount: (memoryContactRequests[idx].sendCount ?? 1) + 1 };
+      }
+      notified.push({ ...existing, lastSentAt: now, sendCount: sendCount + 1 });
+      continue;
+    }
+
+    // First notification for this donor.
+    const row = {
+      id: "cr-" + crypto.randomUUID(),
+      sosId: sos.id,
+      requesterPhone: sos.contactPhone,
+      donorPhone: d.phone,
+      status: "open",
+      sendCount: 1,
+      lastSentAt: now,
+      createdAt: now,
+    };
+    if (mode === "mongodb" && db) {
+      try {
+        await db.collection("contactrequests").insertOne(row);
+      } catch (err: any) {
+        // 11000 = duplicate key on the unique (sosId, donorPhone) index —
+        // a concurrent call created this row first. The donor is already
+        // notified; nothing to do.
+        if (err && err.code === 11000) continue;
+        throw err;
+      }
+    } else {
+      if (!memoryContactRequests.some(c => c.sosId === sos.id && c.donorPhone === d.phone)) {
+        memoryContactRequests.push(row);
+      }
+    }
+    notified.push(row);
   }
-  return requests;
+  return notified;
 }
 
 export async function getContactRequestById(id: string): Promise<any> {
@@ -974,28 +1109,45 @@ export async function getInboxForDonor(phone: string): Promise<any[]> {
 // the requester (the person whose help was actually taken).
 export async function acceptContactRequest(id: string, donorPhone: string): Promise<{ error: string } | { request: any }> {
   const { mode, db } = await getDb();
-  const request = await getContactRequestById(id);
-  if (!request) return { error: "Contact request not found." };
-  if (request.donorPhone !== donorPhone) return { error: "This request is not for your account." };
-  if (request.status !== "open") {
-    return { error: request.status === "accepted" ? "You already accepted this request." : "This request is no longer open (someone may have responded first)." };
-  }
-
   const acceptedAt = new Date().toISOString();
+  let request: any = null;
   if (mode === "mongodb" && db) {
-    await db.collection("contactrequests").updateOne({ id }, { $set: { status: "accepted", acceptedAt } });
-    await db.collection("contactrequests").updateMany(
-      { sosId: request.sosId, id: { $ne: id }, status: "open" },
-      { $set: { status: "superseded" } }
+    // Atomic conditional accept: the { status: "open" } filter makes the
+    // check-and-set ONE operation, so two donors accepting concurrently
+    // cannot both win (the loser matches nothing).
+    const result = await db.collection("contactrequests").findOneAndUpdate(
+      { id, donorPhone, status: "open" },
+      { $set: { status: "accepted", acceptedAt } },
+      { returnDocument: "after" }
     );
+    const value = result && (result as any).value ? (result as any).value : result;
+    if (value) {
+      request = value;
+      await db.collection("contactrequests").updateMany(
+        { sosId: value.sosId, id: { $ne: id }, status: "open" },
+        { $set: { status: "superseded" } }
+      );
+    }
   } else {
+    // In-memory path: the check-and-write block has no await inside, so it
+    // is atomic within the event loop (equivalent to the conditional
+    // findOneAndUpdate above).
     const idx = memoryContactRequests.findIndex(c => c.id === id);
-    memoryContactRequests[idx] = { ...memoryContactRequests[idx], status: "accepted", acceptedAt };
-    memoryContactRequests = memoryContactRequests.map(c =>
-      c.sosId === request.sosId && c.id !== id && c.status === "open"
-        ? { ...c, status: "superseded" }
-        : c
-    );
+    if (idx !== -1 && memoryContactRequests[idx].donorPhone === donorPhone && memoryContactRequests[idx].status === "open") {
+      memoryContactRequests[idx] = { ...memoryContactRequests[idx], status: "accepted", acceptedAt };
+      request = memoryContactRequests[idx];
+      memoryContactRequests = memoryContactRequests.map(c =>
+        c.sosId === request.sosId && c.id !== id && c.status === "open"
+          ? { ...c, status: "superseded" }
+          : c
+      );
+    }
+  }
+  if (!request) {
+    const existing = await getContactRequestById(id);
+    if (!existing) return { error: "Contact request not found." };
+    if (existing.donorPhone !== donorPhone) return { error: "This request is not for your account." };
+    return { error: existing.status === "accepted" ? "You already accepted this request." : "This request is no longer open (someone may have responded first)." };
   }
 
   await addAuditLog({
@@ -1006,7 +1158,7 @@ export async function acceptContactRequest(id: string, donorPhone: string): Prom
     detail: "Donor accepted — both parties' phone numbers revealed to each other",
   });
 
-  const updated = await getContactRequestById(id);
+  const updated = (await getContactRequestById(id)) || request;
   return { request: updated };
 }
 
@@ -1037,7 +1189,7 @@ export async function getFulfilledContactRequestForSos(sosId: string): Promise<a
 }
 
 export async function addAuditLog(entry: any): Promise<void> {
-  const record = { id: "aud-" + Date.now() + "-" + Math.floor(Math.random() * 10000), timestamp: new Date().toISOString(), ...entry };
+  const record = { id: "aud-" + crypto.randomUUID(), timestamp: new Date().toISOString(), ...entry };
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
     await db.collection("auditlog").insertOne(record);

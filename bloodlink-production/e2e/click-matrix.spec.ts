@@ -324,30 +324,30 @@ test.describe("click matrix — donor search", () => {
     const module = page.locator("#donor-search-module-card");
     const list = module.locator(".max-h-\\[500px\\] > div");
 
-    // Seed data: Bilal Siddiqui (B-) is the only unavailable donor; the
+    // Seed data: Bilal S. (B-) is the only unavailable donor; the
     // toggle defaults to OFF so he is visible until switched on.
-    await expect(page.getByText("Bilal Siddiqui")).toBeVisible();
+    await expect(page.getByText("Bilal S.")).toBeVisible();
     await page.locator("#btn-toggle-available-only").click();
-    await expect(page.getByText("Bilal Siddiqui")).toHaveCount(0);
+    await expect(page.getByText("Bilal S.")).toHaveCount(0);
     await page.locator("#btn-toggle-available-only").click();
-    await expect(page.getByText("Bilal Siddiqui")).toBeVisible();
+    await expect(page.getByText("Bilal S.")).toBeVisible();
 
-    // Blood filter: Amna Bibi is the only AB+ seed donor.
+    // Blood filter: Amna B. is the only AB+ seed donor.
     await page.locator('[id="btn-filter-blood-AB+"]').click();
-    await expect(page.getByText("Amna Bibi")).toBeVisible();
-    await expect(page.getByText("Zainab Malik")).toHaveCount(0);
+    await expect(page.getByText("Amna B.")).toBeVisible();
+    await expect(page.getByText("Zainab M.")).toHaveCount(0);
 
-    // City filter: Rawalpindi keeps its donors (Usman Ghani, B+) and hides
-    // Islamabad's Zainab Malik (O-).
+    // City filter: Rawalpindi keeps its donors (Usman G., B+) and hides
+    // Islamabad's Zainab M. (O-).
     await page.locator('[id="btn-filter-blood-All"]').click();
     await page.locator('[id="btn-filter-city-Rawalpindi"]').click();
-    await expect(page.getByText("Usman Ghani")).toBeVisible();
-    await expect(page.getByText("Zainab Malik")).toHaveCount(0);
+    await expect(page.getByText("Usman G.")).toBeVisible();
+    await expect(page.getByText("Zainab M.")).toHaveCount(0);
     await page.locator('[id="btn-filter-city-All"]').click();
-    await expect(page.getByText("Zainab Malik")).toBeVisible();
+    await expect(page.getByText("Zainab M.")).toBeVisible();
 
     // Protected number: click swaps the masked label for guidance text.
-    const zCard = list.filter({ hasText: "Zainab Malik" }).first();
+    const zCard = list.filter({ hasText: "Zainab M." }).first();
     const copyBtn = zCard.locator('button[id^="btn-call-donor-"]');
     await expect(copyBtn).toContainText(/•+/);
     await copyBtn.click();
@@ -356,7 +356,7 @@ test.describe("click matrix — donor search", () => {
 
     // Reviews drawer: expand, submit a real review, confirm the honest success.
     await zCard.getByRole("button", { name: /Reviews \(\d+\)/ }).click();
-    await expect(zCard.getByText("Patient testimonials for Zainab Malik")).toBeVisible();
+    await expect(zCard.getByText("Patient testimonials for Zainab M.")).toBeVisible();
     await zCard.locator("#review-patient-name").fill(`E2E Patient ${Date.now()}`);
     await zCard.getByRole("button", { name: "Rate 5 stars" }).click();
     await zCard.locator("#review-comment").fill("Quick response, reached the hospital in time.");
@@ -412,7 +412,12 @@ test.describe("click matrix — map, chatbot, org portal", () => {
   test("assistant FAB toggles the dialog open and closed", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const fab = page.locator("#btn-toggle-ai-chat");
-    await expect(fab).toHaveAttribute("aria-expanded", "false");
+    // The FAB is a React.lazy chunk mounted at the tail of the app tree; on
+    // a cold webkit context under load it appears past the 10s default
+    // expect window. (chatbot.spec survives because click() auto-waits
+    // under the test timeout instead.) Kept generous on purpose — same
+    // precedent as the Leaflet map waits above.
+    await expect(fab).toHaveAttribute("aria-expanded", "false", { timeout: 60_000 });
     await fab.click();
     await expect(fab).toHaveAttribute("aria-expanded", "true");
     const dialog = page.locator("#ai-chatbot-dialog");

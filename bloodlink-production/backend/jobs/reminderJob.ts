@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { CONFIG } from "../config/config";
 import { logger } from "../lib/logger";
 import { getDonors, addNotification, updateDonorField } from "../services/dbService";
@@ -23,7 +24,7 @@ export async function runReminderCheck(): Promise<void> {
       if (donor.lastReminderAt && donor.lastReminderAt >= donor.nextEligibleDate) continue; // already reminded for this window
 
       await addNotification({
-        id: "notif-" + Date.now() + "-" + remindersSent,
+        id: "notif-" + crypto.randomUUID(),
         title: "You can donate again",
         message: `Hi ${donor.name}, your recovery window is complete and you're eligible to donate blood again. Your next donation could save up to 3 lives.`,
         type: "reminder",

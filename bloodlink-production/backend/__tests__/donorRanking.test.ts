@@ -27,7 +27,7 @@ describe("transparent donor ranking", () => {
     expect(r.score).toBeGreaterThan(60);
     expect(r.score).toBeLessThanOrEqual(100);
     expect(r.reasons.some(s => s.includes("Exact O+ match"))).toBe(true);
-    expect(r.reasons.some(s => s.includes("km from the hospital"))).toBe(true);
+    expect(r.reasons.some(s => s.includes("km from the request"))).toBe(true);
     expect(r.reasons.some(s => s.includes("Available now"))).toBe(true);
     expect(r.reasons.some(s => s.includes("Eligible to donate now"))).toBe(true);
     expect(r.reasons.some(s => s.includes("No response history"))).toBe(true);

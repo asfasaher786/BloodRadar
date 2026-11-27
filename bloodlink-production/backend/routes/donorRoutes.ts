@@ -1,7 +1,9 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import {
   getDonors,
+  getDonorById,
   updateDonorAvailability,
   addDonorReview,
   logDonation,
@@ -20,14 +22,47 @@ import { broadcastEvent } from "../services/events";
 // /api/auth/me) and to a requester after the contact-reveal accept flow.
 const router = Router();
 
+// P2-7: public listings show first name + last initial only (never a full
+// name). Review PATIENT names/comments/dates stay on the review endpoint;
+// the list carries just the aggregate count/average.
+function nameForPublicList(name: string): string {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Donor";
+  if (parts.length === 1) return parts[0];
+  const lastInitial = parts[parts.length - 1].charAt(0).toUpperCase();
+  return `${parts[0]} ${lastInitial}.`;
+}
+
 router.get("/", async (_req, res, next) => {
   try {
     const donors = await getDonors();
-    const masked = donors.map(d => ({
-      ...d,
-      phone: maskPhone(d.phone),
-      phoneMasked: true,
-    }));
+    // Explicit allow-list (P2-7): name+initial, blood group, city, coarse
+    // area, availability, verified — and nothing else. No coordinates, no
+    // full names, no dates, no review content.
+    const masked = donors.map(d => {
+      const reviews = Array.isArray(d.reviews) ? d.reviews : [];
+      const total = reviews.length;
+      const average = total > 0
+        ? Math.round((reviews.reduce((s: number, r: any) => s + (Number(r.rating) || 0), 0) / total) * 10) / 10
+        : null;
+      return {
+        id: d.id,
+        name: nameForPublicList(d.name),
+        bloodGroup: d.bloodGroup,
+        city: d.city,
+        area: d.location || "",
+        isAvailable: d.isAvailable,
+        isVerified: d.isVerified,
+        phone: maskPhone(d.phone),
+        phoneMasked: true,
+        stats: {
+          donationsCount: d.stats?.donationsCount ?? 0,
+          livesSaved: d.stats?.livesSaved ?? 0,
+        },
+        badges: d.badges || [],
+        reviewsSummary: { count: total, average },
+      };
+    });
     res.json(masked);
   } catch (err) {
     next(err);
@@ -140,6 +175,27 @@ const reviewSchema = z.object({
   comment: z.string().trim().max(300).optional(),
 });
 
+// Phase 2 (P2-7): reviews are no longer embedded in the public donor list.
+// They are fetched per donor, and the reviewer's name is scrubbed to first
+// name + last initial so no full third-party names sit in public payloads.
+router.get("/:id/reviews", async (req, res, next) => {
+  try {
+    const id = sanitizeText(req.params.id, 80);
+    const donor = await getDonorById(id);
+    if (!donor) return res.status(404).json({ error: "Donor not found" });
+    const reviews = (donor.reviews || []).map((r: any) => ({
+      id: r.id,
+      patientName: nameForPublicList(r.patientName || "Anonymous"),
+      rating: r.rating,
+      comment: sanitizeText(r.comment || "", 300),
+      date: r.date,
+    }));
+    res.json({ reviews });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/:id/reviews", async (req, res, next) => {
   try {
     const parsed = reviewSchema.safeParse(req.body);
@@ -148,7 +204,7 @@ router.post("/:id/reviews", async (req, res, next) => {
     }
     const { patientName, reviewerName, rating, comment } = parsed.data;
     const review = {
-      id: "rev-" + Date.now(),
+      id: "rev-" + crypto.randomUUID(),
       patientName: sanitizeText(patientName || reviewerName || "", 60) || "Anonymous",
       rating: Number(rating) || 5,
       comment: sanitizeText(comment || "", 300),
@@ -156,7 +212,9 @@ router.post("/:id/reviews", async (req, res, next) => {
     };
     const updated = await addDonorReview(sanitizeText(req.params.id, 80), review);
     if (!updated) return res.status(404).json({ error: "Donor not found" });
-    res.json({ success: true, donor: { ...updated, phone: maskPhone(updated.phone) } });
+    // P2-7: never echo the full donor object (it contains reviews, dates,
+    // coordinates). The caller re-reads the allow-listed public data.
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

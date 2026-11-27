@@ -47,7 +47,9 @@ export function normalizePhone(raw: string): string {
   return trimmed;
 }
 
-// Privacy mask for public listings: "+923005551234" → "+92 300 •••• 234".
+// Privacy mask for public listings: "+923005551234" → "+92 •••• 34".
+// P2-6: only the country code and the LAST 2 digits are shown (the old mask
+// revealed the first 3 + last 3, i.e. 8 of 12 digits — brute-forceable).
 // Full numbers are only ever revealed through the explicit contact-reveal
 // flow (donor accepts → requester and donor exchange real numbers).
 export function maskPhone(phone: string): string {
@@ -55,6 +57,6 @@ export function maskPhone(phone: string): string {
   if (digits.length < 8) return phone; // too short to mask meaningfully
   const cc = digits.slice(0, 2);
   const rest = digits.slice(2);
-  if (rest.length < 6) return "+" + cc + " ••••";
-  return "+" + cc + " " + rest.slice(0, 3) + " •••• " + rest.slice(-3);
+  if (rest.length < 2) return "+" + cc + " ••••";
+  return "+" + cc + " •••• " + rest.slice(-2);
 }

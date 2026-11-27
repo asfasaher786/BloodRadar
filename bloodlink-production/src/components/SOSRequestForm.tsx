@@ -8,6 +8,7 @@ import {
   Clock
 } from "lucide-react";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
+import { getNeighbourhoodsForCity } from "../lib/neighbourhoods";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import Select from "./ui/Select";
@@ -99,6 +100,9 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
   const [reason, setReason] = useState("");
   const [urgency, setUrgency] = useState<'Immediate (SOS)' | 'Urgent' | 'Routine'>("Immediate (SOS)");
   const [city, setCity] = useState<string>(DEFAULT_CITY);
+  // P2-4: optional coarse neighbourhood (per selected city) — lets the
+  // backend rank donors by real distance instead of city name alone.
+  const [neighbourhood, setNeighbourhood] = useState("");
   const [submitPhase, setSubmitPhase] = useState<'idle' | 'loading' | 'success'>('idle');
   const [error, setError] = useState("");
 
@@ -256,6 +260,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           reason: emergencyMode ? "" : reason,
           urgency: emergencyMode ? "Immediate (SOS)" : urgency,
           city,
+          neighbourhood,
           proofToken,
         })
       });
@@ -916,7 +921,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 type="button"
                 id={`chip-city-${c.toLowerCase()}`}
                 aria-pressed={city === c}
-                onClick={() => setCity(c)}
+                onClick={() => { setCity(c); setNeighbourhood(""); }}
                 className={`h-9 px-4 rounded-lg border text-sm font-bold transition-colors duration-150
                   ${city === c ? "bg-blood text-white border-blood" : "bg-card text-muted border-border hover:border-ink/40"}`}
               >
@@ -987,6 +992,21 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           </div>
           <p className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>Optional — donors can match on blood group and city alone.</p>
         </fieldset>
+
+        {/* P2-4: optional neighbourhood — nearest-first donor ranking. */}
+        <Select
+          id="select-sos-neighbourhood"
+          label="Neighbourhood"
+          optional
+          value={neighbourhood}
+          onChange={(e) => setNeighbourhood(e.target.value)}
+          hint="Optional — helps rank nearby donors first. A coarse area, never a street address."
+        >
+          <option value="">Not sure — skip this step</option>
+          {getNeighbourhoodsForCity(city).map(area => (
+            <option key={area} value={area}>{area}</option>
+          ))}
+        </Select>
 
         {/* Units — always visible, compact. */}
         <fieldset>

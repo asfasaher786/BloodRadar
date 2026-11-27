@@ -65,7 +65,9 @@ export async function registerDonorViaUi(
   // which CSS id selectors mis-parse as combinators.
   await reg.locator(`[id="chip-reg-blood-${bloodGroup}"]`).click();
   await reg.locator(`[id="chip-reg-city-${city.toLowerCase()}"]`).click();
-  await reg.locator("#reg-location").fill("G-10/4");
+  // P2-4: area is now a neighbourhood dropdown per city. G-10 exists in the
+  // Islamabad list; Saddar in the Rawalpindi list.
+  await reg.locator("#reg-area").selectOption(city === "Rawalpindi" ? "Saddar" : "G-10");
   await reg.getByRole("button", { name: "Continue" }).click();
   await reg.locator("#reg-age-confirm").check();
   await reg.locator("#reg-health-confirm").check();

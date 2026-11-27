@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { chatbotClassifier } from "./mlRoutes";
 import { askGemini, chatAiEnabled } from "../services/geminiService";
@@ -29,6 +30,14 @@ const chatSchema = z.object({
   language: z.enum(["en", "ur"]).optional(),
 });
 
+// P2-5: chat sessions are private per visitor. Session ids must look like
+// server-generated ids; anything else (including the legacy shared
+// "default-session" / "bloodradar_session_user" buckets) is replaced with a
+// fresh crypto-random UUID so no visitor ever shares another visitor's
+// history.
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{8,100}$/;
+const LEGACY_SHARED_SESSION_IDS = new Set(["default-session", "bloodradar_session_user"]);
+
 router.post("/", async (req, res, next) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
@@ -37,7 +46,11 @@ router.post("/", async (req, res, next) => {
     }
 
     const message = sanitizeText(parsed.data.message, 1000);
-    const sid = sanitizeText(parsed.data.sessionId || "default-session", 100);
+    const clientSid = parsed.data.sessionId ? sanitizeText(parsed.data.sessionId, 100) : "";
+    const sid =
+      clientSid && SESSION_ID_RE.test(clientSid) && !LEGACY_SHARED_SESSION_IDS.has(clientSid)
+        ? clientSid
+        : crypto.randomUUID();
     const languageEnum: "en" | "ur" = parsed.data.language === "ur" ? "ur" : "en";
 
     // 1. Fetch Session History
@@ -45,7 +58,7 @@ router.post("/", async (req, res, next) => {
 
     // Save user message
     const userMsg = {
-      id: "msg-" + Date.now() + "-user",
+      id: "msg-" + crypto.randomUUID() + "-user",
       sender: "user" as const,
       text: message,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -69,7 +82,7 @@ router.post("/", async (req, res, next) => {
     );
 
     const aiMsg = {
-      id: "msg-" + Date.now() + "-ai",
+      id: "msg-" + crypto.randomUUID() + "-ai",
       sender: "ai" as const,
       text: replyText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -82,7 +95,8 @@ router.post("/", async (req, res, next) => {
 
     res.json({
       reply: aiMsg,
-      history: updatedHistory
+      history: updatedHistory,
+      sessionId: sid
     });
   } catch (err) {
     next(err);

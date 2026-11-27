@@ -28,7 +28,23 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // WebKit in dev-mode averages 4-7s per interaction; several journeys
+    // legitimately pass the 60s global budget (observed 56-59s passes and
+    // 60s timeouts on the same tests across runs). 2 minutes gives those
+    // journeys headroom without slowing anything down — tests still finish
+    // as fast as they can; the timeout only caps pathological hangs.
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      timeout: 120_000,
+      // Same story for expect() polls: on a cold webkit browser context the
+      // app (and the React.lazy FAB chunk) mounts past the 10s default
+      // expect window under load — observed "Received: hidden" /
+      // "element(s) not found" flakes that never reproduce on an isolated
+      // warm load. 30s keeps polls honest without capping genuinely slow
+      // webkit mounts.
+      expect: { timeout: 30_000 },
+    },
     // 360px mobile column — the narrowest supported layout.
     { name: "mobile-chromium", use: { ...devices["Pixel 5"], viewport: { width: 360, height: 740 } } },
   ],

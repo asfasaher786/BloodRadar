@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { Donor } from "../types";
+import { Donor, DonorReview } from "../types";
 import { API_BASE } from "../lib/api";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
+import { getNeighbourhoodsForCity } from "../lib/neighbourhoods";
 import { 
   Search, MapPin, CheckCircle, ShieldAlert, Award, 
   ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus, Lock 
 } from "lucide-react";
 import Input from "./ui/Input";
 import Button from "./ui/Button";
+import Select from "./ui/Select";
 import Stepper from "./ui/Stepper";
 import Badge from "./ui/Badge";
 
@@ -39,6 +41,10 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
 
   // Expanded panel state per individual donor card
   const [expandedDonorReviews, setExpandedDonorReviews] = useState<string | null>(null);
+  // P2-7: reviews are no longer shipped inside the public donor list. They
+  // are fetched per donor from a scoped endpoint with scrubbed names.
+  const [fetchedReviews, setFetchedReviews] = useState<Record<string, DonorReview[]>>({});
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   // Review submission state
   const [patientName, setPatientName] = useState("");
@@ -58,7 +64,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
   const [regBlood, setRegBlood] = useState("O-");
   const [regPhone, setRegPhone] = useState("");
   const [regCity, setRegCity] = useState(DEFAULT_CITY);
-  const [regLocation, setRegLocation] = useState("");
+  const [regArea, setRegArea] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [healthConfirmed, setHealthConfirmed] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
@@ -85,6 +91,19 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
     setTimeout(() => setCopiedId(null), 3000);
   };
 
+  const loadReviews = async (donorId: string) => {
+    setReviewsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/donors/${donorId}/reviews`);
+      const data = response.ok ? await response.json() : { reviews: [] };
+      setFetchedReviews((prev) => ({ ...prev, [donorId]: data.reviews || [] }));
+    } catch (err) {
+      setFetchedReviews((prev) => ({ ...prev, [donorId]: [] }));
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
   const handleReviewSubmit = async (donorId: string) => {
     if (!patientName.trim() || !comment.trim()) {
       setReviewError("Please complete all fields");
@@ -108,8 +127,10 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
         setPatientName("");
         setComment("");
         setRating(5);
-        // Refresh parent state
+        // Refresh parent state (updates the public allow-list summary)
         onReviewSubmitted();
+        // And refresh this donor's fetched testimonial list.
+        loadReviews(donorId);
       } else {
         const data = await response.json();
         setReviewError(data.error || "Failed to post review.");
@@ -128,7 +149,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
   const handleStepNext = () => {
     setRegisterError("");
     if (step === 0) {
-      if (!regName.trim() || !regPhone.trim() || !regLocation.trim()) {
+      if (!regName.trim() || !regPhone.trim() || !regArea) {
         setRegisterError("Please complete all fields.");
         return;
       }
@@ -194,7 +215,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
           name: regName,
           bloodGroup: regBlood,
           city: regCity,
-          location: regLocation
+          area: regArea
         })
       });
       const data = await response.json();
@@ -204,7 +225,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
         if (data.user?.phone) localStorage.setItem("bloodradar_my_donor_phone", data.user.phone);
         setRegName("");
         setRegPhone("");
-        setRegLocation("");
+        setRegArea("");
         setRegBlood("O-");
         setAgeConfirmed(false);
         setHealthConfirmed(false);
@@ -349,11 +370,9 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
               </div>
             ) : (
               filtered.map((donor) => {
-                const reviews = donor.reviews || [];
-                const totalReviews = reviews.length;
-                const avgRating = totalReviews > 0 
-                  ? (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews).toFixed(1)
-                  : null;
+                const totalReviews = donor.reviewsSummary?.count ?? 0;
+                const avgRating = totalReviews > 0 ? donor.reviewsSummary?.average : null;
+                const reviews = fetchedReviews[donor.id] ?? [];
 
                 return (
                   <div 
@@ -400,7 +419,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                           
                           <div className="flex items-center gap-1.5 text-xs text-[var(--muted)] mt-1">
                             <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                            <span>{donor.location}, {donor.city}</span>
+                            <span>{donor.area}, {donor.city}</span>
                           </div>
 
                           {/* Badges */}
@@ -444,6 +463,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                                 setComment("");
                                 setReviewError("");
                                 setReviewSuccess(null);
+                                loadReviews(donor.id);
                               }
                             }}
                             className={`flex-1 sm:flex-initial py-2 px-3 rounded-xl text-xs font-bold leading-none border transition duration-300 flex items-center justify-center gap-1 cursor-pointer ${
@@ -491,7 +511,11 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Left: Testimonials List */}
                           <div className="space-y-2 max-h-[190px] overflow-y-auto scrollbar-thin pr-1">
-                            {reviews.length === 0 ? (
+                            {reviewsLoading ? (
+                              <div className="text-center py-6 bg-[var(--surface)] border border-[var(--border)] border-dashed rounded-xl">
+                                <p className="text-xs text-[var(--muted)] font-sans">Loading testimonials…</p>
+                              </div>
+                            ) : reviews.length === 0 ? (
                               <div className="text-center py-6 bg-[var(--surface)] border border-[var(--border)] border-dashed rounded-xl">
                                 <Sparkles className="w-5 h-5 text-slate-350 mx-auto mb-1" />
                                 <p className="text-xs text-[var(--muted)] font-sans">
@@ -788,7 +812,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                               key={city}
                               id={`chip-reg-city-${city.toLowerCase()}`}
                               aria-pressed={regCity === city}
-                              onClick={() => setRegCity(city)}
+                              onClick={() => { setRegCity(city); setRegArea(""); }}
                               className={`flex-1 h-12 rounded-xl text-xs font-bold transition-all duration-150
                                 ${regCity === city ? 'bg-blood text-white' : 'bg-surface text-muted border border-border hover:border-ink/40'}`}
                             >
@@ -797,13 +821,18 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                           ))}
                         </div>
                       </fieldset>
-                      <Input
-                        id="reg-location"
-                        label="Area / sector"
-                        placeholder="e.g., G-10/4, near PIMS"
-                        value={regLocation}
-                        onChange={(e) => setRegLocation(e.target.value)}
-                      />
+                      <Select
+                        id="reg-area"
+                        label="Neighbourhood"
+                        value={regArea}
+                        onChange={(e) => setRegArea(e.target.value)}
+                        hint="A coarse area, never your street address — used to rank you by distance from the patient."
+                      >
+                        <option value="">Select your area</option>
+                        {getNeighbourhoodsForCity(regCity).map(area => (
+                          <option key={area} value={area}>{area}</option>
+                        ))}
+                      </Select>
                     </div>
                   </div>
                 )}

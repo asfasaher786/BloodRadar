@@ -39,6 +39,8 @@ const createSosSchema = z.object({
   reason: z.string().trim().max(200).optional(),
   urgency: z.string().trim().max(40).optional(),
   city: z.string().trim().max(50).optional(),
+  // P2-4: optional coarse neighbourhood for distance-based matching.
+  neighbourhood: z.string().trim().max(80).optional(),
   // P0-1: proof the requester owns the contact phone (15-minute token from
   // POST /api/requester/otp/verify). Required for anonymous posts; signed-in
   // posters skip it because their login already verified the phone.
@@ -122,6 +124,7 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
       reason: sanitizeText(d.reason || "", 200) || "Surgical critical emergency",
       urgency: sanitizeText(d.urgency || "", 40),
       city: d.city,
+      neighbourhood: sanitizeText(d.neighbourhood || "", 80),
       org: org ? { id: org.id, name: org.name } : null,
     });
 

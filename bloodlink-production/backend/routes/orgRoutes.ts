@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import {
   addOrganization,
@@ -67,7 +68,7 @@ router.post("/apply", authMiddleware, async (req, res, next) => {
     }
 
     const org = {
-      id: "org-" + Date.now(),
+      id: "org-" + crypto.randomUUID(),
       name: sanitizeText(d.name, 80),
       type: d.type,
       city: resolveCity(d.city || undefined),

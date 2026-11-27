@@ -23,7 +23,10 @@ test.describe("axe accessibility scans", () => {
     // (firefox is slow enough that axe would scan the skeleton, not the app).
     // The SOS card only renders once data has arrived, so it proves the app
     // is fully mounted before axe runs.
-    await expect(page.locator("#main-content")).toBeVisible();
+    // On a cold webkit context under load the app mounts past the 10s
+    // default expect window ("Received: hidden" flake in the P2 gate).
+    // Generous explicit wait — same precedent as the map test's 60s.
+    await expect(page.locator("#main-content")).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("#sos-request-form-card")).toBeVisible();
     const { violations } = await new AxeBuilder({ page }).analyze();
     const serious = seriousRules(violations);

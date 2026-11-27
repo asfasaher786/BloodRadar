@@ -1,4 +1,5 @@
 import { getEligibleDonorsForPatient } from "../lib/bloodCompatibility";
+import { haversineKm } from "../lib/geo";
 
 // Transparent donor ranking (Phase 3): a plain, explainable rule-based
 // score — NO machine learning, no hidden weights. Every point is returned
@@ -16,19 +17,6 @@ export interface RankedMatch {
   donor: any;
   score: number; // 0–100
   reasons: string[]; // one line per scored factor
-}
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number | null {
-  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
-  if (Number.isNaN(lat1) || Number.isNaN(lon1) || Number.isNaN(lat2) || Number.isNaN(lon2)) return null;
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function daysUntil(dateIso: string | undefined | null): number | null {
@@ -64,16 +52,20 @@ export function scoreDonorForSos(
     reasons.push(`${donor.bloodGroup} is compatible with ${patientGroup} (+25)`);
   }
 
-  // 2. Distance from the hospital (up to +20). Straight-line km when both
-  // sides have coordinates; falls back to a city comparison honestly.
-  const km = hospital && hospital.latitude != null
-    ? haversineKm(donor.latitude, donor.longitude, hospital.latitude, hospital.longitude)
+  // 2. Distance from the request (up to +20). P2-4: when the requester
+  // picked a neighbourhood, the SOS carries that centroid; otherwise we use
+  // the hospital's location. Straight-line km when both sides have
+  // coordinates; falls back to a city comparison honestly.
+  const refLat = sos.latitude != null ? sos.latitude : hospital?.latitude ?? null;
+  const refLon = sos.latitude != null ? sos.longitude : hospital?.longitude ?? null;
+  const km = refLat != null && refLon != null
+    ? haversineKm(donor.latitude, donor.longitude, refLat, refLon)
     : null;
   if (km !== null) {
-    if (km <= 5) { score += 20; reasons.push(`${km.toFixed(1)} km from the hospital (+20)`); }
-    else if (km <= 15) { score += 15; reasons.push(`${km.toFixed(1)} km from the hospital (+15)`); }
-    else if (km <= 30) { score += 10; reasons.push(`${km.toFixed(1)} km from the hospital (+10)`); }
-    else { score += 5; reasons.push(`${km.toFixed(1)} km from the hospital (+5)`); }
+    if (km <= 5) { score += 20; reasons.push(`${km.toFixed(1)} km from the request (+20)`); }
+    else if (km <= 15) { score += 15; reasons.push(`${km.toFixed(1)} km from the request (+15)`); }
+    else if (km <= 30) { score += 10; reasons.push(`${km.toFixed(1)} km from the request (+10)`); }
+    else { score += 5; reasons.push(`${km.toFixed(1)} km from the request (+5)`); }
   } else {
     const sameCity = (donor.city || "").toLowerCase() === (sos.city || "").toLowerCase();
     score += sameCity ? 20 : 10;

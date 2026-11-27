@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "./bloodCompatibility";
 import { getDonors, addTargetedNotification, getPushSubscriptionForPhone, removePushSubscription } from "../services/dbService";
@@ -113,7 +114,7 @@ export async function notifyMatchingDonors(sos: any, now: Date = new Date()): Pr
 
       if (prefs.appAlerts) {
         await addTargetedNotification({
-          id: `ntf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: `ntf-${crypto.randomUUID()}`,
           targetPhone: donor.phone,
           title: `New ${sos.bloodGroup} request${immediate ? " (SOS)" : ""}`,
           message: `${sos.unitsNeeded} unit${sos.unitsNeeded === 1 ? "" : "s"} of ${sos.bloodGroup} needed${sos.hospitalName ? ` at ${sos.hospitalName}` : ""}. Contact: ${maskPhone(sos.contactPhone)}. Open the SOS board to respond.`,

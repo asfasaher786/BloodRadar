@@ -31,7 +31,7 @@ describe("incoming SMS parsing", () => {
 
     // The created SOS must carry the normalized sender and parsed city.
     const list = await request(app).get("/api/emergencies");
-    const sos = list.body.find((e: any) => e.contactPhone === "+92 300 •••• 234");
+    const sos = list.body.find((e: any) => e.contactPhone === "+92 •••• 34");
     expect(sos).toBeTruthy();
     expect(sos.city).toBe("Rawalpindi");
     expect(sos.bloodGroup).toBe("O+");

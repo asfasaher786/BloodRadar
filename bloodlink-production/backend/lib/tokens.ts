@@ -14,6 +14,7 @@ export interface RefreshTokenPayload {
   sub: string;
   role: Role;
   type: "refresh";
+  jti: string; // P2-8: server-side revocation requires a JWT ID
 }
 
 export function signAccessToken(payload: { sub: string; phone?: string; role: Role }): string {
@@ -22,8 +23,8 @@ export function signAccessToken(payload: { sub: string; phone?: string; role: Ro
   return jwt.sign(tokenPayload, CONFIG.JWT_SECRET, { expiresIn: CONFIG.ACCESS_TOKEN_TTL_SECONDS });
 }
 
-export function signRefreshToken(payload: { sub: string; role: Role }): string {
-  const tokenPayload: RefreshTokenPayload = { sub: payload.sub, role: payload.role, type: "refresh" };
+export function signRefreshToken(payload: { sub: string; role: Role; jti: string }): string {
+  const tokenPayload: RefreshTokenPayload = { sub: payload.sub, role: payload.role, type: "refresh", jti: payload.jti };
   return jwt.sign(tokenPayload, CONFIG.JWT_SECRET, { expiresIn: CONFIG.REFRESH_TOKEN_TTL_SECONDS });
 }
 
@@ -41,6 +42,9 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload | null {
   try {
     const decoded = jwt.verify(token, CONFIG.JWT_SECRET) as RefreshTokenPayload;
     if (decoded.type !== "refresh") return null;
+    // P2-8: refresh tokens minted before the jti migration cannot be revoked
+    // server-side, so they are rejected outright (one re-login, not a hole).
+    if (typeof decoded.jti !== "string" || decoded.jti.length < 8) return null;
     return decoded;
   } catch {
     return null;

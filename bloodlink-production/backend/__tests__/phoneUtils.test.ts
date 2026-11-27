@@ -47,14 +47,25 @@ describe("normalizePhone", () => {
 });
 
 describe("maskPhone", () => {
-  it("masks the middle of the number and keeps the last 3 digits", () => {
-    expect(maskPhone("+923005551234")).toBe("+92 300 •••• 234");
+  it("shows only the country code and the last 2 digits (P2-6)", () => {
+    expect(maskPhone("+923005551234")).toBe("+92 •••• 34");
   });
 
   it("never returns the original digits for a maskable number", () => {
     const masked = maskPhone("+923005551234");
     expect(masked).not.toContain("5551");
+    expect(masked).not.toContain("300");
     expect(masked).not.toBe("+923005551234");
+    // At most the country code + 2 final digits are visible: 4 of 12.
+    expect(masked.replace(/\D/g, "").length).toBe(4);
+  });
+
+  it("never reveals more than the country code + last 2 digits for any length", () => {
+    // The mask assumes a 2-digit country code (the PK deployment). Whatever
+    // the length, at most 4 digits may be visible.
+    expect(maskPhone("+923005551234").replace(/\D/g, "").length).toBe(4);
+    expect(maskPhone("+971501234567").replace(/\D/g, "").length).toBe(4);
+    expect(maskPhone("+14155552671").replace(/\D/g, "").length).toBe(4);
   });
 
   it("leaves too-short values alone", () => {
