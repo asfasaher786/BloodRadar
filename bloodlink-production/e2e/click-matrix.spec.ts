@@ -218,8 +218,9 @@ test.describe("click matrix — directory tabs", () => {
     // only after the default timeout had already expired.
     await expect(page.getByRole("heading", { name: "Twin Cities Donor Blood Type Mix" })).toBeVisible({ timeout: 30_000 });
     await page.locator("#tab-ml-playground").click();
-    // Heading role: the tab button carries the same label text.
-    await expect(page.getByRole("heading", { name: "Real ML Lab" })).toBeVisible({ timeout: 30_000 });
+    // P3b-3: the ML lab is admins-only — anonymous visitors get the honest
+    // locked card, never the panel (donor-location telemetry stays private).
+    await expect(page.getByRole("heading", { name: "ML lab is admins-only" })).toBeVisible({ timeout: 30_000 });
 
     // Back to hospitals: clicking a card marks it selected (highlighted).
     await page.locator("#tab-hospitals").click();

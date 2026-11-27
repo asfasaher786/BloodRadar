@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE } from "../lib/api";
+import { postWithBotCheck } from "../lib/turnstile";
 import type { Hospital } from "../types";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
@@ -171,11 +172,7 @@ export default function OrgPortal({ hospitals, onDataChanged }: Props) {
     setLoginBusy(true);
     setLoginError("");
     try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: loginPhone }),
-      });
+      const res = await postWithBotCheck(`${API_BASE}/api/auth/otp/request`, { phone: loginPhone });
       const data = await res.json();
       if (res.ok) {
         setOtpStage("sent");

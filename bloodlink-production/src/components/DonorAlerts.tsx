@@ -203,7 +203,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         </div>
         <div>
           <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>Donor Alerts</h2>
-          <p className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs font-sans" style={{ color: 'var(--muted)' }}>
             When a new request matches your blood group and city, we alert you here.
           </p>
         </div>
@@ -234,7 +234,7 @@ export default function DonorAlerts({ onChanged }: { onChanged: () => void }) {
         </label>
         {/* P0-6: honest pause note until #52 connects a live SMS provider. */}
         {!smsAlertsAvailable && (
-          <p className="text-xs font-mono" style={{ color: 'var(--warn-ink)' }}>
+          <p className="text-xs font-sans" style={{ color: 'var(--warn-ink)' }}>
             SMS alerts are paused until a live SMS provider is connected. In-app alerts keep you covered meanwhile.
           </p>
         )}

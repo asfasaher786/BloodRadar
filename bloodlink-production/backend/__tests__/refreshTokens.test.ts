@@ -74,6 +74,7 @@ describe("refresh token rotation and revocation (P2-8)", () => {
       phone,
       code,
       registerAsDonor: true,
+      privacyConsent: true,
       name: "Replay Donor",
       bloodGroup: "A+",
       city: "Islamabad",

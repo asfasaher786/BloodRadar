@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { CONFIG } from "../config/config";
 import { getEligibleDonorsForPatient } from "./bloodCompatibility";
 import { getDonors, addTargetedNotification, getPushSubscriptionForPhone, removePushSubscription } from "../services/dbService";
-import { getSmsProvider, hasLiveSmsProvider } from "./smsProvider";
+import { hasLiveSmsProvider, sendSmsGuarded } from "./smsProvider";
 import { maskPhone } from "./phoneUtils";
 import { pushConfigured, sendWebPush } from "./pushService";
 
@@ -128,9 +128,10 @@ export async function notifyMatchingDonors(sos: any, now: Date = new Date()): Pr
 
       // P0-6: smsAlerts is gated twice — at save time (coerced off) and
       // here at delivery, so pre-existing rows with smsAlerts:true can't
-      // trigger fake "deliveries" through the console provider.
+      // trigger fake "deliveries" through the console provider. P3a-7 adds
+      // a third gate inside sendSmsGuarded: country allow-list + daily cap.
       if (prefs.smsAlerts && hasLiveSmsProvider()) {
-        const ok = await getSmsProvider().sendSms(
+        const ok = await sendSmsGuarded(
           donor.phone,
           `BloodRadar: ${sos.unitsNeeded} unit${sos.unitsNeeded === 1 ? "" : "s"} of ${sos.bloodGroup} needed${sos.hospitalName ? ` at ${sos.hospitalName}` : ""} (${sos.city || "your city"}). Reply YES to accept, or open BloodRadar to respond.`
         );

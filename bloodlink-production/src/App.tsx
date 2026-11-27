@@ -17,6 +17,8 @@ import AdminPanel from "./components/AdminPanel";
 import DonorStreakBadge from "./components/DonorStreakBadge";
 import DonorInbox from "./components/DonorInbox";
 import DonorAlerts from "./components/DonorAlerts";
+import PrivacyPage from "./components/PrivacyPage";
+import PrivacyControls from "./components/PrivacyControls";
 import OrgPortal from "./components/OrgPortal";
 import Badge from "./components/ui/Badge";
 import PageSkeleton from "./components/PageSkeleton";
@@ -40,6 +42,23 @@ const MapComponent = lazy(() => import("./components/MapComponent"));
 const AIChatbot = lazy(() => import("./components/AIChatbot"));
 const StatsDashboard = lazy(() => import("./components/StatsDashboard"));
 const RealMLPanel = lazy(() => import("./components/RealMLPanel"));
+
+// P3b-3: the ML/urgency lab is admins-only — it shows operational telemetry
+// including donor-location clusters. Everyone else sees an honest locked
+// card in both of its slots (the #insights page and the directory tab).
+function MlLabLockedCard() {
+  return (
+    <div className="p-6 rounded-2xl border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+      <div className="flex items-center gap-2">
+        <Lock className="w-4 h-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+        <h3 className="font-bold text-sm" style={{ color: 'var(--ink)' }}>ML lab is admins-only</h3>
+      </div>
+      <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--muted)' }}>
+        The urgency classifier and donor-clustering lab show operational data (including donor locations), so only platform admins can open it. Sign in with an admin number to see it.
+      </p>
+    </div>
+  );
+}
 
 // Suspense fallback that mirrors the real map card's chrome (header bar +
 // responsive map area) so the layout doesn't jump when the Leaflet chunk
@@ -117,11 +136,14 @@ export default function App() {
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [highlightedSosIds, setHighlightedSosIds] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
-  // Secondary /insights view (analytics + ML lab) — a hash-routed page so the
-  // main emergency flow stays clean. Deep links work on first load too.
-  const [view, setView] = useState<'home' | 'insights'>(() =>
-    typeof window !== "undefined" && window.location.hash === "#insights" ? "insights" : "home"
-  );
+  // Secondary hash-routed views (analytics + privacy policy) keep the main
+  // emergency flow clean. Deep links work on first load too.
+  const [view, setView] = useState<'home' | 'insights' | 'privacy'>(() => {
+    if (typeof window === "undefined") return "home";
+    if (window.location.hash === "#insights") return "insights";
+    if (window.location.hash === "#privacy") return "privacy";
+    return "home";
+  });
   // Mobile sticky bottom bar appears once the hero scrolls out of view.
   const [bottomBarVisible, setBottomBarVisible] = useState(false);
   const alertRef = useRef<HTMLDivElement>(null);
@@ -233,12 +255,16 @@ export default function App() {
     };
   }, []);
 
-  // Hash routing: #insights opens the secondary analytics view; any other
-  // hash returns to home. Native hash navigation handles the scrolling.
+  // Hash routing: #insights opens the analytics view, #privacy the privacy
+  // policy; any other hash returns to home. Native hash navigation handles
+  // the scrolling.
   useEffect(() => {
     const onHash = () => {
       if (window.location.hash === "#insights") {
         setView("insights");
+        window.scrollTo(0, 0);
+      } else if (window.location.hash === "#privacy") {
+        setView("privacy");
         window.scrollTo(0, 0);
       } else {
         setView("home");
@@ -254,7 +280,7 @@ export default function App() {
   useEffect(() => {
     if (view !== "home") return;
     const hash = window.location.hash;
-    if (hash && hash !== "#top" && hash !== "#insights") {
+    if (hash && hash !== "#top" && hash !== "#insights" && hash !== "#privacy") {
       const el = document.getElementById(hash.slice(1));
       if (el) el.scrollIntoView({ behavior: "smooth" });
     }
@@ -386,7 +412,7 @@ export default function App() {
     { id: 'hospitals', label: 'Hospitals', icon: Building2 },
     { id: 'camps', label: 'Camps', icon: Calendar },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'ml-playground', label: 'Real ML Lab', icon: Sparkles },
+    { id: 'ml-playground', label: 'ML Lab', icon: Sparkles },
   ] as const;
 
   // Mobile menu — emergency first. The first four labels are pinned by the
@@ -442,7 +468,7 @@ export default function App() {
                 <a
                   key={name}
                   href={`tel:${number}`}
-                  className="font-mono text-xs sm:text-sm font-bold underline underline-offset-2 hover:opacity-75 transition"
+                  className="font-sans text-xs sm:text-sm font-bold underline underline-offset-2 hover:opacity-75 transition"
                   style={{ color: 'var(--warn-ink)' }}
                 >
                   {name} {number}
@@ -502,7 +528,7 @@ export default function App() {
               <div className="font-display font-extrabold text-base tracking-tight leading-none" style={{ color: 'var(--ink)' }}>
                 Blood<span style={{ color: 'var(--color-blood-bright, var(--blood))' }}>Radar</span>
               </div>
-              <div className="text-xs font-mono mt-0.5 truncate" style={{ color: 'var(--muted)' }}>Islamabad &amp; Rawalpindi</div>
+              <div className="text-xs font-sans mt-0.5 truncate" style={{ color: 'var(--muted)' }}>Islamabad &amp; Rawalpindi</div>
             </div>
           </a>
 
@@ -578,7 +604,7 @@ export default function App() {
                                 Sample data
                               </span>
                             )}
-                            <span className="text-xs font-mono ml-auto shrink-0" style={{ color: 'var(--muted)' }}>{timeAgo(n.timestamp)}</span>
+                            <span className="text-xs font-sans ml-auto shrink-0" style={{ color: 'var(--muted)' }}>{timeAgo(n.timestamp)}</span>
                           </div>
                           <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--ink)' }}>{n.message}</p>
                         </>
@@ -692,7 +718,7 @@ export default function App() {
       <section className="relative z-[1] max-w-7xl mx-auto w-full px-4 sm:px-6 pt-8 md:pt-10 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-start">
         {/* Left — calm, confident copy, vertically centered against the card. */}
         <div className="lg:col-span-6 space-y-6 fade-up">
-          <span className="inline-flex items-center gap-2 text-xs font-mono font-semibold px-3 py-1.5 rounded-full border bg-blood-soft border-blood/20 text-blood-ink">
+          <span className="inline-flex items-center gap-2 text-xs font-sans font-semibold px-3 py-1.5 rounded-full border bg-blood-soft border-blood/20 text-blood-ink">
             <span className="w-1.5 h-1.5 rounded-full bg-blood" aria-hidden="true" />
             Islamabad &amp; Rawalpindi · Early-stage community project
           </span>
@@ -786,6 +812,17 @@ export default function App() {
               <DonorStreakBadge donor={currentUserDonor} onToggleAvailability={handleToggleCurrentUserAvailability} onDonorUpdated={handleDonorProfileUpdated} />
               {meRole === 'donor' && <DonorInbox onChanged={loadData} />}
               <DonorAlerts onChanged={loadData} />
+              {/* P3b-10: policy link + delete-my-data live right where the
+                  donor manages their own account. */}
+              {meRole === 'donor' && (
+                <PrivacyControls
+                  onDeleted={() => {
+                    setHasSession(false);
+                    setCurrentUserDonor(null);
+                    loadData();
+                  }}
+                />
+              )}
             </div>
           )}
         </div>
@@ -793,7 +830,9 @@ export default function App() {
       </div>
 
       {/* MAIN CONTENT — full-bleed so the bands span edge to edge. */}
-      {view === "insights" ? (
+      {view === "privacy" ? (
+        <PrivacyPage />
+      ) : view === "insights" ? (
         <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pb-28 md:pb-24">
           <div className="py-10 space-y-8">
             <div>
@@ -803,16 +842,20 @@ export default function App() {
               </a>
               <h2 className="font-display font-extrabold text-3xl md:text-4xl mt-4" style={{ color: 'var(--ink)' }}>Analytics &amp; ML lab</h2>
               <p className="text-sm md:text-base mt-3 max-w-2xl leading-relaxed" style={{ color: 'var(--muted)' }}>
-                The real numbers from this deployment — nothing invented. The ML lab is a local, explainable demo of donor matching; it never makes medical decisions.
+                The real numbers from this deployment — nothing invented. The ML lab is a local, explainable demo of donor matching, open to platform admins only; it never makes medical decisions.
               </p>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
               <Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}>
                 <StatsDashboard />
               </Suspense>
-              <Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}>
-                <RealMLPanel />
-              </Suspense>
+              {meRole === 'admin' ? (
+                <Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}>
+                  <RealMLPanel />
+                </Suspense>
+              ) : (
+                <MlLabLockedCard />
+              )}
             </div>
           </div>
         </main>
@@ -830,7 +873,7 @@ export default function App() {
               <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--blood)', animation: 'blood-pulse 2s ease-in-out infinite' }} />
               <h2 className="font-display font-bold text-base" style={{ color: 'var(--ink)' }}>Live requests</h2>
             </div>
-            <span className="font-mono text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
+            <span className="font-sans text-xs px-2 py-1 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><AnimatedNumber value={pendingEmergencies.length} /> pending</span>
           </div>
           {/* Screen-reader summary of the board state — announced when the
               count changes via SSE, without the animated counter noise. */}
@@ -1015,7 +1058,7 @@ export default function App() {
                           ))}
                         </div>
                         {h.stockLastUpdated && (
-                          <div className="mt-2 text-xs font-mono text-muted">
+                          <div className="mt-2 text-xs font-sans text-muted">
                             {!IS_PROD_BUILD && h.isSample ? 'Sample data — call to confirm. ' : ''}Stock reviewed {formatReviewedDate(h.stockLastUpdated)}
                           </div>
                         )}
@@ -1069,7 +1112,7 @@ export default function App() {
                         <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                           <div className="text-xs" style={{ color: 'var(--muted)' }}>
                             <div className="font-semibold flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> {c.date}</div>
-                            <div className="font-mono">{c.time}</div>
+                            <div className="font-sans">{c.time}</div>
                           </div>
                           <button onClick={() => handleCampRegistration(c.id)}
                             className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition hover:opacity-90"
@@ -1100,7 +1143,15 @@ export default function App() {
                   </motion.div>
                 )}
                 {activeTab === 'analytics' && <motion.div key="analytics" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading analytics"><SkeletonStats /></div>}><StatsDashboard /></Suspense></motion.div>}
-                {activeTab === 'ml-playground' && <motion.div key="ml" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}><RealMLPanel /></Suspense></motion.div>}
+                {activeTab === 'ml-playground' && (
+                  <motion.div key="ml" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    {meRole === 'admin' ? (
+                      <Suspense fallback={<div className="p-5" role="status" aria-label="Loading ML lab"><SkeletonStats /></div>}><RealMLPanel /></Suspense>
+                    ) : (
+                      <MlLabLockedCard />
+                    )}
+                  </motion.div>
+                )}
             </div>
           </div>
 
@@ -1184,6 +1235,7 @@ export default function App() {
             { label: 'Live map', href: '#map' },
             { label: 'Become a donor', href: '#become-a-donor' },
             { label: 'Analytics & ML lab', href: '#insights' },
+            { label: 'Privacy policy', href: '#privacy' },
           ].map(({ label, href }) => (
             <a key={label} href={href} className="text-sm font-semibold transition-colors duration-150" style={{ color: 'var(--muted)' }}>
               {label}

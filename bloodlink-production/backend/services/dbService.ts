@@ -6,6 +6,7 @@ import { normalizePhone, maskPhone } from "../lib/phoneUtils";
 import { resolveCity } from "../config/regions";
 import { resolveNeighbourhood } from "../config/neighbourhoods";
 import { haversineKm } from "../lib/geo";
+import { detectSuspiciousFlags } from "../lib/sosFlags";
 import type { DonorResponseStats } from "./donorRanking";
 import {
   preseededUsers,
@@ -33,6 +34,12 @@ let memoryContactRequests: any[] = [];
 let memoryAuditLog: any[] = [];
 let memoryOrganizations: any[] = [];
 let memoryPushSubscriptions: any[] = [];
+// P3a-6: phones an admin has blocked (one-tap from the review queue).
+// Blocked phones cannot raise new SOS requests.
+let memoryBlockedPhones: any[] = [];
+// P3a-8: admin two-step security records (TOTP secret, recovery-code hashes,
+// known devices). Real records only — never seeded, never fabricated.
+let memoryAdminSecurity: any[] = [];
 
 const otpStore = new Map();
 export function storeOtp(phone, code, ttlMs = 5 * 60 * 1000) {
@@ -168,6 +175,18 @@ function sosTtlMs(): number {
   return hours * 60 * 60 * 1000;
 }
 
+// P3b-10: an Expired (48h auto-close) request keeps its contact phone for
+// this grace window so the requester can re-confirm ("still need blood?")
+// and reopen it. After that the number is purged too — replaced with the
+// masked form on the SOS row and on every contact-request copy.
+const EXPIRED_PHONE_PURGE_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Retention ceilings (P3b-10), applied lazily on read/write like the SOS
+// expiry above — no cron infra needed and the policy page can honestly cite
+// real limits.
+const AUDIT_RETENTION_DAYS = 365;
+const CHAT_RETENTION_DAYS = 90;
+
 function isStalePending(row: any, now: number): boolean {
   if (row.status !== "Pending") return false;
   // expiresAt is stored as an ISO string — parse before comparing, and fall
@@ -191,14 +210,26 @@ function isStalePending(row: any, now: number): boolean {
 async function expireStale(list: any[]): Promise<string[]> {
   const now = Date.now();
   const expiredIds: string[] = [];
+  const purgeIds: string[] = [];
   for (const row of list) {
     if (isStalePending(row, now)) {
       expiredIds.push(row.id);
       row.status = "Expired";
       row.expiredAt = new Date(now).toISOString();
     }
+    // P3b-10: sweep expired rows past the grace window — the number is gone
+    // for good (only its masked form survives for display), while the
+    // requesterCode stays so ownership history remains verifiable.
+    if (row.status === "Expired" && !row.phonePurged && row.contactPhone && row.expiredAt) {
+      const expiredMs = new Date(row.expiredAt).getTime();
+      if (Number.isFinite(expiredMs) && now - expiredMs > EXPIRED_PHONE_PURGE_GRACE_MS) {
+        purgeIds.push(row.id);
+        row.contactPhone = maskPhone(row.contactPhone);
+        row.phonePurged = true;
+      }
+    }
   }
-  if (expiredIds.length > 0) {
+  if (expiredIds.length > 0 || purgeIds.length > 0) {
     const { mode, db } = await getDb();
     if (mode === "mongodb" && db) {
       for (const id of expiredIds) {
@@ -207,8 +238,31 @@ async function expireStale(list: any[]): Promise<string[]> {
           { $set: { status: "Expired", expiredAt: new Date(now).toISOString() } }
         );
       }
+      for (const id of purgeIds) {
+        const row = list.find(r => r.id === id);
+        const masked = row ? row.contactPhone : null;
+        if (masked) {
+          await db.collection("emergencies").updateOne(
+            { id },
+            { $set: { contactPhone: masked, phonePurged: true } }
+          );
+          await db.collection("contactrequests").updateMany(
+            { sosId: id },
+            { $set: { requesterPhone: masked } }
+          );
+        }
+      }
+    } else {
+      // In-memory rows were mutated in place above; mirror the requester-
+      // phone scrub onto the contact-request copies too.
+      for (const id of purgeIds) {
+        const row = list.find(r => r.id === id);
+        if (!row) continue;
+        memoryContactRequests = memoryContactRequests.map(c =>
+          c.sosId === id ? { ...c, requesterPhone: row.contactPhone } : c
+        );
+      }
     }
-    // In-memory rows were mutated in place above.
   }
   return expiredIds;
 }
@@ -240,6 +294,9 @@ let isConnected = false;
 // Attempt database connection lazy-loaded on request or on startup
 export async function getDb(): Promise<{ mode: "mongodb" | "fallback"; db: Db | null }> {
   if (!CONFIG.MONGO_URI) {
+    // The reset hook also runs in fallback mode (memory state is trivially
+    // empty, but the operator still gets the audit trail of the event).
+    await applyAdminTotpResetIfRequested();
     return { mode: "fallback", db: null };
   }
 
@@ -260,6 +317,7 @@ export async function getDb(): Promise<{ mode: "mongodb" | "fallback"; db: Db | 
     // Seed empty collections
     await seedMongoDbIfEmpty(db);
     await ensureIndexes(db);
+    await applyAdminTotpResetIfRequested();
 
     return { mode: "mongodb", db };
   } catch (err) {
@@ -267,6 +325,31 @@ export async function getDb(): Promise<{ mode: "mongodb" | "fallback"; db: Db | 
     isConnected = false;
     db = null;
     return { mode: "fallback", db: null };
+  }
+}
+
+// P3a-8 lockout recovery: setting ADMIN_TOTP_RESET=true for one deploy clears
+// every admin's TOTP/recovery state (the founder lost their authenticator),
+// audit-logs the event, and the operator removes the flag on the next deploy.
+// Runs at most once per process, on first DB touch.
+let totpResetApplied = false;
+async function applyAdminTotpResetIfRequested(): Promise<void> {
+  if (totpResetApplied || process.env.ADMIN_TOTP_RESET !== "true") return;
+  totpResetApplied = true;
+  try {
+    const { mode, db: database } = await getDb();
+    if (mode === "mongodb" && database) {
+      await database.collection("adminsecurity").deleteMany({});
+    }
+    memoryAdminSecurity = [];
+    console.warn("[admin-totp] ADMIN_TOTP_RESET=true — all admin two-step state cleared");
+    await addAuditLog({
+      action: "admin_totp_reset",
+      actor: "system",
+      detail: "ADMIN_TOTP_RESET=true on boot — all admin TOTP secrets, recovery codes and devices cleared",
+    });
+  } catch (err) {
+    console.error("[admin-totp] reset failed:", err);
   }
 }
 
@@ -325,6 +408,13 @@ async function seedMongoDbIfEmpty(database: Db) {
       await database.createCollection("pushSubscriptions");
       console.log("Created pushSubscriptions collection in MongoDB");
     }
+
+    // Admin security records start empty (P3a-8): a TOTP secret only exists
+    // once a real admin actually enrolls. Never fabricated.
+    if (!names.includes("adminsecurity")) {
+      await database.createCollection("adminsecurity");
+      console.log("Created adminsecurity collection in MongoDB");
+    }
   } catch (error) {
     console.error("Failed to seed MongoDB:", error);
   }
@@ -357,6 +447,8 @@ async function ensureIndexes(database: Db) {
     // a TTL index so expired rows self-destruct in MongoDB.
     await database.collection("refreshtokens").createIndex({ jti: 1 }, { unique: true });
     await database.collection("refreshtokens").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    // P3a-8: one security record per admin phone.
+    await database.collection("adminsecurity").createIndex({ phone: 1 }, { unique: true });
   } catch (error) {
     // Index creation failing must not kill the fallback path — log and move on.
     console.error("Failed to create MongoDB indexes:", error);
@@ -418,6 +510,36 @@ export async function addDonor(donor: any): Promise<void> {
     throw new Error("A donor with this phone number is already registered.");
   }
   memoryDonors.push(donor);
+}
+
+// P3b-10 delete-my-data: removes everything tied to a donor's phone —
+// profile, inbox history, targeted notifications — but refuses while a
+// contact handoff is still in flight (open or accepted). Those rows belong
+// to the requester's side of the exchange too; deleting them mid-handoff
+// would orphan a real patient's lifeline. The caller tells the donor to
+// resolve or wait them out, then retry.
+export async function deleteDonorAccount(phone: string): Promise<{ error: string; code: string } | { ok: true }> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const active = await db.collection("contactrequests").findOne({ donorPhone: phone, status: { $in: ["open", "accepted"] } });
+    if (active) {
+      return { error: "You have a contact request still in progress. Resolve it first (accept or decline), then delete your data.", code: "ACTIVE_CONTACT" };
+    }
+    await db.collection("donors").deleteOne({ phone });
+    await db.collection("contactrequests").deleteMany({ donorPhone: phone });
+    await db.collection("notifications").deleteMany({ targetPhone: phone });
+    await db.collection("pushSubscriptions").deleteMany({ phone });
+    return { ok: true };
+  }
+  const active = memoryContactRequests.find(c => c.donorPhone === phone && (c.status === "open" || c.status === "accepted"));
+  if (active) {
+    return { error: "You have a contact request still in progress. Resolve it first (accept or decline), then delete your data.", code: "ACTIVE_CONTACT" };
+  }
+  memoryDonors = memoryDonors.filter(d => d.phone !== phone);
+  memoryContactRequests = memoryContactRequests.filter(c => c.donorPhone !== phone);
+  memoryNotifications = memoryNotifications.filter(n => n.targetPhone !== phone);
+  memoryPushSubscriptions = memoryPushSubscriptions.filter(s => s.phone !== phone);
+  return { ok: true };
 }
 
 export async function updateDonorAvailability(phone: string, isAvailable: boolean): Promise<any> {
@@ -619,6 +741,16 @@ export async function createEmergencyRequest(input) {
   // Abuse controls (Phase 3): a real person rarely raises the same need
   // twice, and never many times in a day — both patterns are spam.
   const normalizedRequester = normalizePhone(input.contactPhone);
+
+  // P3a-6: a phone an admin has blocked cannot raise new requests. Checked
+  // first — a blocked spammer must not get the friendlier "duplicate" answer.
+  if (await isPhoneBlocked(normalizedRequester)) {
+    return {
+      error: "This phone number has been blocked from raising requests. If you believe this is a mistake, please contact the hospital directly.",
+      code: "PHONE_BLOCKED",
+    };
+  }
+
   const allEmergencies = await getEmergencies();
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
@@ -670,13 +802,21 @@ export async function createEmergencyRequest(input) {
   // request and reveal endpoints — the only way a requester (who never logs
   // in) can prove they are the same person who raised the SOS.
   const requesterCode = crypto.randomBytes(6).toString("hex");
+  // P3a-6: scan the (already sanitized) text for fake/test-looking signals.
+  const flagReasons = detectSuspiciousFlags({
+    patientName: input.patientName,
+    reason: input.reason,
+    urgency: input.urgency,
+    city: input.city,
+    neighbourhood: input.neighbourhood,
+  });
   const sos = {
     id: "sos-" + crypto.randomUUID(),
     patientName: input.patientName || "Patient (name not given)",
     bloodGroup: effectiveBloodGroup,
     unitsNeeded: Number(input.unitsNeeded) || 1,
-    hospitalId: selectedHospital.id,
-    hospitalName: selectedHospital.name,
+    hospitalId: selectedHospital?.id ?? null,
+    hospitalName: selectedHospital?.name ?? null,
     contactPhone: input.contactPhone,
     requiredBy: input.requiredBy || new Date(Date.now() + 86400000).toISOString().split("T")[0],
     reason: input.reason || "Surgical critical emergency",
@@ -697,6 +837,12 @@ export async function createEmergencyRequest(input) {
     // by an approved org are labelled with the org's identity so donors know
     // a verified organization is vouching for the request.
     ...(postedByOrg ? { orgId: input.org.id, orgName: input.org.name, postedBy: "organization" } : {}),
+    // P3a-6: soft keyword flagging. Fake-looking content still posts (a
+    // heuristic must never suppress a real emergency), but the SOS carries
+    // the signals into the admin review queue. Stripped from public payloads.
+    ...(flagReasons.length > 0
+      ? { flaggedBySystem: { at: new Date().toISOString(), reasons: flagReasons } }
+      : {}),
   };
   await addEmergency(sos);
   await addNotification({
@@ -714,9 +860,17 @@ export async function createEmergencyRequest(input) {
   return { sos, requesterCode };
 }
 
+// Fulfilled and Cancelled are terminal: the handoff is over, so P3b-10
+// scrubs the requester's real number at the moment the status flips. The
+// masked form stays for display; requesterCode stays for audit/ownership.
+const TERMINAL_SOS_STATUSES = new Set(["Fulfilled", "Cancelled"]);
+
 export async function updateEmergencyStatus(sosId: string, status: "Pending" | "Fulfilled" | "Cancelled" | "Expired"): Promise<any> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
+    const row = await db.collection("emergencies").findOne({ id: sosId });
+    const scrub = Boolean(row && TERMINAL_SOS_STATUSES.has(status) && row.contactPhone && !row.phonePurged);
+    const masked = scrub ? maskPhone(row!.contactPhone) : null;
     const result = await db.collection("emergencies").findOneAndUpdate(
       { id: sosId },
       {
@@ -725,10 +879,17 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
           // Real timestamp for the North Star metric (time-to-fulfill) —
           // only set when the SOS actually reaches Fulfilled.
           ...(status === "Fulfilled" ? { fulfilledAt: new Date().toISOString() } : {}),
+          ...(scrub && masked ? { contactPhone: masked, phonePurged: true } : {}),
         },
       },
       { returnDocument: "after" }
     );
+    if (scrub && masked) {
+      await db.collection("contactrequests").updateMany(
+        { sosId },
+        { $set: { requesterPhone: masked } }
+      );
+    }
     return result && (result as any).value ? (result as any).value : result;
   }
   const idx = memoryEmergencies.findIndex(e => e.id === sosId);
@@ -736,6 +897,14 @@ export async function updateEmergencyStatus(sosId: string, status: "Pending" | "
     memoryEmergencies[idx].status = status;
     if (status === "Fulfilled") {
       memoryEmergencies[idx].fulfilledAt = new Date().toISOString();
+    }
+    if (TERMINAL_SOS_STATUSES.has(status) && memoryEmergencies[idx].contactPhone && !memoryEmergencies[idx].phonePurged) {
+      const masked = maskPhone(memoryEmergencies[idx].contactPhone);
+      memoryEmergencies[idx].contactPhone = masked;
+      memoryEmergencies[idx].phonePurged = true;
+      memoryContactRequests = memoryContactRequests.map(c =>
+        c.sosId === sosId ? { ...c, requesterPhone: masked } : c
+      );
     }
     return memoryEmergencies[idx];
   }
@@ -755,6 +924,11 @@ export async function extendEmergency(sosId: string): Promise<{ error: string } 
     if (row.status !== "Pending" && row.status !== "Expired") {
       return { error: `This request was already ${row.status} and can't be re-opened.` };
     }
+    // P3b-10: a purged request has no contact phone left — reopening it
+    // would produce a "live" SOS no donor can actually coordinate with.
+    if (row.phonePurged) {
+      return { error: "This request's contact details were removed after it closed. Please raise a new request instead." };
+    }
     const result = await db.collection("emergencies").findOneAndUpdate(
       { id: sosId },
       { $set: { status: "Pending", expiresAt } },
@@ -768,6 +942,9 @@ export async function extendEmergency(sosId: string): Promise<{ error: string } 
   const row = memoryEmergencies[idx];
   if (row.status !== "Pending" && row.status !== "Expired") {
     return { error: `This request was already ${row.status} and can't be re-opened.` };
+  }
+  if (row.phonePurged) {
+    return { error: "This request's contact details were removed after it closed. Please raise a new request instead." };
   }
   row.status = "Pending";
   row.expiresAt = expiresAt;
@@ -951,21 +1128,172 @@ export async function addEmergencyReport(sosId: string, reason: string): Promise
   return { ok: true, found: true };
 }
 
-// Moderation (Phase 3): an admin reviewed a reported SOS and decided it is
-// legitimate — the reports are cleared so it drops out of the queue.
-export async function clearEmergencyReports(sosId: string): Promise<{ ok: boolean; found: boolean }> {
+// Moderation (Phase 3 + P3a-6): an admin reviewed a queue entry and decided
+// it is legitimate — visitor reports AND system auto-flags are cleared so it
+// drops out of the review queue.
+export async function clearModerationSignals(sosId: string): Promise<{ ok: boolean; found: boolean }> {
   const { mode, db } = await getDb();
   if (mode === "mongodb" && db) {
     const result = await db.collection("emergencies").updateOne(
       { id: sosId },
-      { $set: { reports: [] } }
+      { $set: { reports: [], flaggedBySystem: null } }
     );
     return { ok: result.matchedCount > 0, found: result.matchedCount > 0 };
   }
   const sos = memoryEmergencies.find(e => e.id === sosId);
   if (!sos) return { ok: false, found: false };
   sos.reports = [];
+  delete sos.flaggedBySystem;
   return { ok: true, found: true };
+}
+
+// P3a-6 blocked-phone list. Blocked phones cannot raise new SOS requests;
+// the block is a human (admin) decision, not a heuristic. Unblocking restores
+// the ability to post, but does not restore removed requests.
+export async function isPhoneBlocked(phone: string): Promise<boolean> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const found = await db.collection("blockedPhones").findOne({ phone });
+    return Boolean(found);
+  }
+  return memoryBlockedPhones.some(b => b.phone === phone);
+}
+
+export async function getBlockedPhones(): Promise<any[]> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("blockedPhones").find().sort({ at: -1 }).toArray();
+  }
+  return [...memoryBlockedPhones];
+}
+
+export async function blockPhone(phone: string, actor: string, reason: string): Promise<{ entry: any; removedSosCount: number }> {
+  const normalized = normalizePhone(phone);
+  const entry = { phone: normalized, at: new Date().toISOString(), actor, reason };
+  const { mode, db } = await getDb();
+
+  if (mode === "mongodb" && db) {
+    // Idempotent upsert: re-blocking refreshes the reason/timestamp.
+    await db.collection("blockedPhones").updateOne(
+      { phone: normalized },
+      { $set: entry },
+      { upsert: true }
+    );
+    // Purge everything this phone ever posted so nothing fake stays public
+    // and nothing fake can later be marked "Fulfilled" (which would pollute
+    // the Lives Saved metric).
+    const removed = await db.collection("emergencies").deleteMany({ contactPhone: normalized });
+    return { entry, removedSosCount: removed.deletedCount };
+  }
+
+  if (!memoryBlockedPhones.some(b => b.phone === normalized)) {
+    memoryBlockedPhones.unshift(entry);
+  } else {
+    const idx = memoryBlockedPhones.findIndex(b => b.phone === normalized);
+    memoryBlockedPhones[idx] = entry;
+  }
+  const before = memoryEmergencies.length;
+  memoryEmergencies = memoryEmergencies.filter(e => normalizePhone(e.contactPhone || "") !== normalized);
+  return { entry, removedSosCount: before - memoryEmergencies.length };
+}
+
+export async function unblockPhone(phone: string): Promise<boolean> {
+  const normalized = normalizePhone(phone);
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    const result = await db.collection("blockedPhones").deleteOne({ phone: normalized });
+    return result.deletedCount > 0;
+  }
+  const idx = memoryBlockedPhones.findIndex(b => b.phone === normalized);
+  if (idx === -1) return false;
+  memoryBlockedPhones.splice(idx, 1);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// P3a-8 admin two-step security records. One record per admin phone:
+//  - totpSecret / totpEnabled — the active authenticator-app secret
+//  - pendingTotpSecret / pendingRecoveryCodes — enrollment in progress
+//    (recovery codes stay PLAIN only until enrollment is confirmed; after
+//    that only their SHA-256 hashes exist, and they're shown exactly once)
+//  - knownDevices — device-id cookies we've seen sign in (max 10)
+// The secret itself never leaves the backend except at the instant of
+// enrollment, when the admin scans it. API responses never return it.
+// ---------------------------------------------------------------------------
+
+export async function getAdminSecurity(phone: string): Promise<any> {
+  const normalized = normalizePhone(phone);
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    return await db.collection("adminsecurity").findOne({ phone: normalized });
+  }
+  return memoryAdminSecurity.find(s => s.phone === normalized) || null;
+}
+
+export async function setAdminSecurity(record: any): Promise<void> {
+  record.phone = normalizePhone(record.phone);
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("adminsecurity").updateOne(
+      { phone: record.phone },
+      { $set: record },
+      { upsert: true }
+    );
+    return;
+  }
+  const idx = memoryAdminSecurity.findIndex(s => s.phone === record.phone);
+  if (idx >= 0) memoryAdminSecurity[idx] = record;
+  else memoryAdminSecurity.push(record);
+}
+
+/** Records (or refreshes) a device-id cookie for the admin's phone.
+ * Returns isNew=true the first time this device signs in — the caller turns
+ * that into a new-device alert. */
+export async function trackAdminDevice(
+  phone: string,
+  deviceId: string,
+  label: string
+): Promise<{ isNew: boolean }> {
+  const sec = await getAdminSecurity(phone);
+  const devices = Array.isArray(sec?.knownDevices) ? [...sec.knownDevices] : [];
+  const now = new Date().toISOString();
+  const existing = devices.find((d: any) => d.id === deviceId);
+  let isNew = false;
+  if (existing) {
+    existing.lastSeen = now;
+    if (label) existing.label = label;
+  } else {
+    isNew = true;
+    devices.push({ id: deviceId, label, firstSeen: now, lastSeen: now });
+    // Keep the list bounded — the oldest device drops off (and would alert
+    // again if it ever signs back in, which is the honest behaviour).
+    while (devices.length > 10) devices.shift();
+  }
+  await setAdminSecurity({
+    ...(sec || { phone }),
+    phone,
+    knownDevices: devices,
+  });
+  return { isNew };
+}
+
+export async function forgetAdminDevice(phone: string, deviceId: string): Promise<boolean> {
+  const sec = await getAdminSecurity(phone);
+  if (!sec || !Array.isArray(sec.knownDevices)) return false;
+  const before = sec.knownDevices.length;
+  const devices = sec.knownDevices.filter((d: any) => d.id !== deviceId);
+  if (devices.length === before) return false;
+  await setAdminSecurity({ ...sec, knownDevices: devices });
+  return true;
+}
+
+/** Consumes one recovery code (by hash). Caller verifies the match first. */
+export async function consumeAdminRecoveryCode(phone: string, hash: string): Promise<void> {
+  const sec = await getAdminSecurity(phone);
+  if (!sec) return;
+  const hashes = (Array.isArray(sec.recoveryCodeHashes) ? sec.recoveryCodeHashes : [])
+    .filter((h: string) => h !== hash);
+  await setAdminSecurity({ ...sec, recoveryCodeHashes: hashes });
 }
 
 // P2-3 re-send policy: repeat contact-request calls must not flood donor
@@ -1200,9 +1528,15 @@ export async function addAuditLog(entry: any): Promise<void> {
 
 export async function getAuditLogs(): Promise<any[]> {
   const { mode, db } = await getDb();
+  // P3b-10: audit entries older than the retention ceiling are deleted on
+  // read (lazy pruning — the admin dashboard read is the sweep). The policy
+  // page cites this limit honestly.
+  const cutoff = new Date(Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   if (mode === "mongodb" && db) {
+    await db.collection("auditlog").deleteMany({ timestamp: { $lt: cutoff.toISOString() } });
     return await db.collection("auditlog").find({}).sort({ timestamp: -1 }).limit(500).toArray();
   }
+  memoryAuditLog = memoryAuditLog.filter(a => new Date(a.timestamp).getTime() > cutoff.getTime());
   return memoryAuditLog;
 }
 
@@ -1217,9 +1551,14 @@ export async function getChatSessionHistory(sid: string): Promise<any[]> {
 
 export async function addChatMessage(sid: string, message: any): Promise<void> {
   const { mode, db } = await getDb();
+  // P3b-10: visitor chat history expires after 90 days — pruned lazily on
+  // each write. Old sessions shrink on their own, no cron needed.
+  const cutoff = new Date(Date.now() - CHAT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   if (mode === "mongodb" && db) {
+    await db.collection("chats").deleteMany({ timestamp: { $lt: cutoff } });
     await db.collection("chats").insertOne({ sessionId: sid, message, timestamp: new Date() });
     return;
   }
+  memoryChats = memoryChats.filter(c => c.timestamp > cutoff);
   memoryChats.push({ sessionId: sid, message, timestamp: new Date() });
 }

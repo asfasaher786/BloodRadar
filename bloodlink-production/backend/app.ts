@@ -1,11 +1,13 @@
 import express from "express";
 import cors from "cors";
+import crypto from "crypto";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { CONFIG } from "./config/config";
 import { httpLogger, logger } from "./lib/logger";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { createRateLimiters } from "./middleware/rateLimit";
+import { authMiddleware, roleMiddleware } from "./middleware/auth";
 import { getDb } from "./services/dbService";
 import { registerSseClient } from "./services/events";
 import authRoutes from "./routes/authRoutes";
@@ -32,10 +34,45 @@ export function createApp() {
   // Behind Render/nginx proxies; required so rate limiters key off real IPs.
   app.set("trust proxy", 1);
 
-  // Security headers. CSP is handled at the Vite/static layer so dev HMR
-  // keeps working; everything else (X-Content-Type-Options, frameguard,
-  // nosniff, DNS prefetch control...) is on.
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Security headers. CSP is production-only: a strict policy would break
+  // Vite dev HMR (ws: sockets, inline styles), which is why it's off in dev.
+  // P3a-3: production gets a strict policy whose allow-list is exactly what
+  // the app really uses — Google Fonts (design tokens load via css2) and
+  // ArcGIS map tiles. Everything else is self-hosted, so everything else is
+  // denied. script-src-attr 'none' also kills inline event handlers.
+  // P3a-7: when Cloudflare Turnstile is configured, its script/iframe hosts
+  // are added — and only then, so the disabled state keeps the tight policy.
+  // (No upgrade-insecure-requests: the site is all-HTTPS in production and
+  // browsers already block/upgrade mixed content; the directive would only
+  // corrupt local prod-mode smoke tests.)
+  const turnstileHosts = CONFIG.TURNSTILE_ENABLED
+    ? ["https://challenges.cloudflare.com"]
+    : [];
+  const cspDirectives = CONFIG.IS_PROD
+    ? {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", ...turnstileHosts],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "https://services.arcgisonline.com"],
+        fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+        connectSrc: ["'self'", ...turnstileHosts],
+        frameSrc: turnstileHosts,
+        workerSrc: ["'self'"],
+        mediaSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+      }
+    : undefined;
+  app.use(
+    helmet({
+      contentSecurityPolicy: cspDirectives
+        ? { useDefaults: false, directives: cspDirectives }
+        : false,
+    })
+  );
 
   // Structured request logging with PII redaction.
   app.use(httpLogger);
@@ -68,12 +105,29 @@ export function createApp() {
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
 
+  // P3a-8: anonymous device-id cookie. It lets us spot an admin sign-in
+  // from a browser we've never seen (new-device alert) without identifying
+  // the person. Random 128-bit value, httpOnly, one year — no PII, ever.
+  app.use((req, res, next) => {
+    if (!req.cookies?.br_devid) {
+      res.cookie("br_devid", crypto.randomBytes(16).toString("hex"), {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: CONFIG.IS_PROD,
+        maxAge: 365 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+    }
+    next();
+  });
+
   // Rate limiting: a generous global tier, then strict tiers on the paths
   // an abuser would target first (SOS spam, OTP abuse, Gemini cost abuse).
   const limiters = createRateLimiters();
   app.use("/api", limiters.globalApi);
   app.use("/api/auth/otp/request", limiters.otpRequest);
   app.use("/api/auth/otp/verify", limiters.otpVerify);
+  app.use("/api/auth/totp/verify", limiters.totpVerify);
   app.use("/api/requester/otp/request", limiters.otpRequest);
   app.use("/api/requester/otp/verify", limiters.otpVerify);
   app.post("/api/emergencies", limiters.sos);
@@ -107,7 +161,10 @@ export function createApp() {
   app.use("/api/camps", campRoutes);
   app.use("/api/emergencies", emergencyRoutes);
   app.use("/api/notifications", notificationRoutes);
-  app.use("/api/ml", mlRoutes);
+  // P3b-3: the ML/urgency lab is admin-only. It exposes aggregate emergency
+  // statistics and donor-location clustering — operational telemetry the
+  // public has no business seeing, and donor locations even less so.
+  app.use("/api/ml", authMiddleware, roleMiddleware("admin"), mlRoutes);
   app.use("/api/chat", chatRoutes);
   app.use("/api/sms", smsRoutes);
   app.use("/api/stats", statsRoutes);
@@ -115,9 +172,27 @@ export function createApp() {
   app.use("/api/orgs", orgRoutes);
   app.use("/api/requester", requesterRoutes);
 
+  // Public, PII-free configuration the frontend needs before rendering
+  // (P3a-7): whether the bot wall is on and which site key the widget uses.
+  app.get("/api/config/public", (_req, res) => {
+    res.json({
+      turnstile: {
+        enabled: CONFIG.TURNSTILE_ENABLED,
+        siteKey: CONFIG.TURNSTILE_SITE_KEY,
+      },
+    });
+  });
+
   // Live event stream (SSE). PII-free by contract — see services/events.ts.
-  app.get("/api/events", (_req, res) => {
-    registerSseClient(res);
+  // P3a-4: capped per IP; excess connections get an honest 503 instead of
+  // letting one client pin the server's connection budget open.
+  app.get("/api/events", (req, res) => {
+    if (!registerSseClient(res)) {
+      res.status(503).json({
+        error: "Too many open live connections from this device. Please close other BloodRadar tabs and reload.",
+      });
+      return;
+    }
   });
 
   // Unknown API paths get JSON 404 (never the SPA HTML shell).

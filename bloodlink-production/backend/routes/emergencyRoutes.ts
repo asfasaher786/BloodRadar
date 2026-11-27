@@ -24,6 +24,11 @@ import { authMiddleware, optionalAuthMiddleware, roleMiddleware } from "../middl
 import { broadcastEvent } from "../services/events";
 import { notifyMatchingDonors } from "../lib/notifyService";
 import { checkProofToken } from "../services/requesterProofService";
+import { verifyTurnstile } from "../lib/turnstile";
+import { noteCodeAttempt } from "../services/codeGuard";
+import { logger } from "../lib/logger";
+import { CONFIG } from "../config/config";
+import { testNameBlockReason } from "../lib/sosFlags";
 
 const router = Router();
 
@@ -45,6 +50,8 @@ const createSosSchema = z.object({
   // POST /api/requester/otp/verify). Required for anonymous posts; signed-in
   // posters skip it because their login already verified the phone.
   proofToken: z.string().trim().max(128).optional(),
+  // P3a-7: optional Turnstile token (required only when keys are configured).
+  turnstileToken: z.string().trim().max(2048).optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -66,10 +73,11 @@ const contactRequestSchema = z.object({
 
 // Public board: requester phone masked, requesterCode stripped (it is the
 // requester's secret — exposing it would let anyone impersonate them), and
-// reports stripped (moderator data, only visible to admins in the dashboard).
+// reports + system auto-flags stripped (moderation data, only visible to
+// admins in the dashboard).
 function publicSos(sos: any) {
   if (!sos) return sos;
-  const { requesterCode, reports, ...rest } = sos;
+  const { requesterCode, reports, flaggedBySystem, ...rest } = sos;
   return { ...rest, contactPhone: maskPhone(sos.contactPhone), phoneMasked: true };
 }
 
@@ -95,6 +103,22 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid SOS request" });
     }
     const d = parsed.data;
+
+    // P3a-7: bot wall when Turnstile is configured — before any DB work.
+    if (!(await verifyTurnstile(d.turnstileToken, req.ip || ""))) {
+      return res.status(400).json({ error: "Bot check failed. Please retry." });
+    }
+
+    // P3b-8: production blocks test-like patient names ("Contact reveal
+    // test" class of demo rows) BEFORE the proof token is consumed, so a
+    // blocked submit costs the requester nothing. Soft flags still apply to
+    // the other fields, and the 48h auto-expiry mops up anything else.
+    if (CONFIG.IS_PROD && d.patientName) {
+      const blockReason = testNameBlockReason(d.patientName);
+      if (blockReason) {
+        return res.status(400).json({ error: "That patient name looks like a test entry — please enter the patient's real name." });
+      }
+    }
 
     // P0-1: anonymous posts must prove they own the contact phone. A
     // signed-in poster (donor, org member, admin) already OTP-verified at
@@ -140,7 +164,7 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
       });
     }
     if (result.error) {
-      const status = result.code === "PHONE_LIMIT" ? 429 : 400;
+      const status = result.code === "PHONE_LIMIT" ? 429 : result.code === "PHONE_BLOCKED" ? 403 : 400;
       return res.status(status).json({ error: result.error });
     }
     const sosPublic = publicSos(result.sos);
@@ -149,7 +173,7 @@ router.post("/", optionalAuthMiddleware, async (req, res, next) => {
     // notification failure can never block or roll back the request. The
     // service itself applies eligibility, channel opt-ins and quiet hours.
     notifyMatchingDonors(result.sos).catch(err => {
-      console.error("[notify] donor alert dispatch failed:", err);
+      logger.error({ err }, "[notify] donor alert dispatch failed");
     });
     res.json({
       success: true,
@@ -232,7 +256,13 @@ router.post("/:id/contact-request", async (req, res, next) => {
 
     const sos = await getEmergencyById(id);
     if (!sos) return res.status(404).json({ error: "Emergency request not found" });
-    if (sos.requesterCode !== parsed.data.requesterCode) {
+    const correct = sos.requesterCode === parsed.data.requesterCode;
+    // P3a-5: throttle wrong-code guessing per IP so this route can't be used
+    // to spam donor inboxes with fabricated contact requests.
+    if (noteCodeAttempt(req.ip || "unknown", correct) === "blocked") {
+      return res.status(429).json({ error: "Too many incorrect code attempts from this device. Please wait and try again." });
+    }
+    if (!correct) {
       return res.status(403).json({ error: "Requester code does not match this SOS." });
     }
 
@@ -253,7 +283,13 @@ router.get("/:id/reveal", async (req, res, next) => {
     const code = sanitizeText(String(req.query.code || ""), 40);
     const sos = await getEmergencyById(id);
     if (!sos) return res.status(404).json({ error: "Emergency request not found" });
-    if (!code || sos.requesterCode !== code) {
+    const correct = Boolean(code) && sos.requesterCode === code;
+    // P3a-5: this endpoint hands out a real donor phone number to the code
+    // holder — wrong-code guessing is throttled per IP.
+    if (noteCodeAttempt(req.ip || "unknown", correct) === "blocked") {
+      return res.status(429).json({ error: "Too many incorrect code attempts from this device. Please wait and try again." });
+    }
+    if (!correct) {
       return res.status(403).json({ error: "Requester code does not match this SOS." });
     }
 
@@ -297,8 +333,20 @@ router.patch("/:id/status", optionalAuthMiddleware, async (req, res, next) => {
     const sos = await getEmergencyById(id);
     if (!sos) return res.status(404).json({ error: "Emergency request not found" });
 
+    // P3b-10: a purged request has no contact number left — reopening it
+    // (even by an admin) would produce a "live" SOS no donor can actually
+    // coordinate with. The honest answer is a new request.
+    if (parsed.data.status === "Pending" && sos.phonePurged) {
+      return res.status(409).json({ error: "This request's contact details were removed after it closed. Please raise a new request instead." });
+    }
+
     const isAdmin = req.auth?.role === "admin";
     const isRequester = parsed.data.requesterCode && sos.requesterCode === parsed.data.requesterCode;
+    // P3a-5: anonymous code guesses on status changes are throttled per IP;
+    // session-based actors (admins, orgs) bypass the budget.
+    if (parsed.data.requesterCode && noteCodeAttempt(req.ip || "unknown", Boolean(isRequester)) === "blocked") {
+      return res.status(429).json({ error: "Too many incorrect code attempts from this device. Please wait and try again." });
+    }
     // Org members close only their own org's requests, and only to a
     // terminal state (Fulfilled/Cancelled) — never back to Pending.
     let isOrgOwner = false;
@@ -354,13 +402,19 @@ router.post("/:id/extend", optionalAuthMiddleware, async (req, res, next) => {
 
     const isAdmin = req.auth?.role === "admin";
     const isRequester = sos.requesterCode === parsed.data.requesterCode;
+    // P3a-5: throttle anonymous code guesses; admins skip the budget.
+    if (!isAdmin && noteCodeAttempt(req.ip || "unknown", isRequester) === "blocked") {
+      return res.status(429).json({ error: "Too many incorrect code attempts from this device. Please wait and try again." });
+    }
     if (!isAdmin && !isRequester) {
       return res.status(403).json({ error: "Only the requester (with their code) or an admin can re-open this request." });
     }
 
     const result = await extendEmergency(id);
     if ("error" in result) {
-      const code = result.error.includes("already") ? 409 : 404;
+      // 409 for rows that exist but can't be re-opened (terminal state or
+      // P3b-10 purged contact details); 404 only for missing rows.
+      const code = result.error.includes("already") || result.error.includes("contact details") ? 409 : 404;
       return res.status(code).json({ error: result.error });
     }
 

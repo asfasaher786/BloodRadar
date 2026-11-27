@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { Donor, DonorReview } from "../types";
 import { API_BASE } from "../lib/api";
+import { postWithBotCheck } from "../lib/turnstile";
 import { SUPPORTED_CITIES, DEFAULT_CITY } from "../lib/regions";
 import { getNeighbourhoodsForCity } from "../lib/neighbourhoods";
 import { 
   Search, MapPin, CheckCircle, ShieldAlert, Award, 
-  ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus, Lock 
+  ToggleLeft, ToggleRight, Star, MessageSquare, Send, Sparkles, UserPlus, Lock, Phone, Siren 
 } from "lucide-react";
 import Input from "./ui/Input";
 import Button from "./ui/Button";
@@ -68,6 +69,9 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [healthConfirmed, setHealthConfirmed] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
+  // P3b-10: separate, explicit privacy-policy consent — recorded server-side
+  // with version + timestamp when the donor record is created.
+  const [privacyConsent, setPrivacyConsent] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState("");
@@ -161,8 +165,8 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
       }
       setStep(2);
     } else if (step === 2) {
-      if (!consentGiven) {
-        setRegisterError("Please confirm you consent to your contact details being shared with patients in emergencies.");
+      if (!consentGiven || !privacyConsent) {
+        setRegisterError("Please confirm both the contact-sharing consent and the privacy policy to continue.");
         return;
       }
       setStep(3);
@@ -176,11 +180,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
 
     try {
       // Request the verification code for this phone.
-      const response = await fetch(`${API_BASE}/api/auth/otp/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: regPhone })
-      });
+      const response = await postWithBotCheck(`${API_BASE}/api/auth/otp/request`, { phone: regPhone });
       const data = await response.json();
       if (response.ok) {
         setOtpStage('sent');
@@ -212,6 +212,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
           phone: regPhone,
           code: otpCode.trim(),
           registerAsDonor: true,
+          privacyConsent: true,
           name: regName,
           bloodGroup: regBlood,
           city: regCity,
@@ -230,6 +231,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
         setAgeConfirmed(false);
         setHealthConfirmed(false);
         setConsentGiven(false);
+        setPrivacyConsent(false);
         setStep(0);
         onReviewSubmitted();
       } else {
@@ -248,6 +250,14 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
     if (availableOnly && !donor.isAvailable) return false;
     return true;
   });
+
+  // P3b-4: a zero-match search is not a dead end. The requester can forward
+  // a ready-made WhatsApp message to family/friends (no platform link — the
+  // site URL stays private until the SMS channel goes live), call a hospital
+  // from the hotlines card, or dial the 1122 helpline directly.
+  const zeroMatchWhatsAppUrl = `https://wa.me/?text=${encodeURIComponent(
+    `Urgent: we need ${bloodFilter !== "All" ? bloodFilter + " " : ""}blood${cityFilter !== "All" ? ` in ${cityFilter}` : " in Islamabad/Rawalpindi"}. Do you know any available donor? Please contact me.`
+  )}`;
 
   return (
     <div id="donor-search-module-card" className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-5 md:p-6 shadow-sm">
@@ -365,14 +375,27 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                   No matching available donors found
                 </p>
                 <p className="text-xs text-[var(--muted)] mt-1">
-                  Try different blood types or cities
+                  Try different blood types or cities — or take one of these next steps
                 </p>
+                {/* P3b-4: three concrete actions when the registry comes up empty. */}
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <a href={zeroMatchWhatsAppUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                    <Button size="sm" variant="secondary" icon={<Send className="w-3.5 h-3.5" />}>Share on WhatsApp</Button>
+                  </a>
+                  <Button size="sm" variant="secondary" icon={<Phone className="w-3.5 h-3.5" />} onClick={() => document.getElementById("help")?.scrollIntoView({ behavior: "smooth" })}>
+                    Call a hospital
+                  </Button>
+                  <a href="tel:1122" className="inline-flex">
+                    <Button size="sm" variant="ghost" icon={<Siren className="w-3.5 h-3.5" />}>Helpline 1122</Button>
+                  </a>
+                </div>
               </div>
             ) : (
               filtered.map((donor) => {
                 const totalReviews = donor.reviewsSummary?.count ?? 0;
                 const avgRating = totalReviews > 0 ? donor.reviewsSummary?.average : null;
                 const reviews = fetchedReviews[donor.id] ?? [];
+                const donatedCount = donor.stats?.donationsCount ?? 1;
 
                 return (
                   <div 
@@ -383,9 +406,8 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-start gap-3">
                         {/* Big blood marker */}
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-650 via-rose-600 to-rose-700 shadow shadow-rose-100 flex flex-col items-center justify-center text-white font-sans shrink-0">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-650 via-rose-600 to-rose-700 shadow shadow-rose-100 flex items-center justify-center text-white font-sans shrink-0">
                           <span className="text-base font-extrabold leading-none">{donor.bloodGroup}</span>
-                          <span className="text-xs font-mono tracking-tighter opacity-80 mt-1 uppercase">Twin</span>
                         </div>
 
                         <div>
@@ -442,7 +464,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                         
                         <div className="text-left sm:text-right text-xs max-sm:flex max-sm:items-center max-sm:gap-2 max-sm:w-full">
                           <div className="text-[var(--muted)] font-sans">
-                            Donated count: <span className="text-slate-800 font-semibold">{donor.stats?.donationsCount ?? 1} bags</span>
+                            Donated count: <span className="text-slate-800 font-semibold">{donatedCount} bag{donatedCount === 1 ? "" : "s"}</span>
                           </div>
                           <div className="text-[var(--muted)] font-sans">
                             Lives Saved: <span className="text-[var(--safe-ink)] font-bold">{donor.stats?.livesSaved ?? 1}</span>
@@ -502,7 +524,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                             {`Patient testimonials for ${donor.name}`}
                           </h4>
                           {avgRating && (
-                            <div className="text-xs font-bold text-[var(--warn)] bg-[var(--warn)]/10 px-2 py-0.5 rounded border border-[var(--warn)]/30/60 font-mono">
+                            <div className="text-xs font-bold text-[var(--warn)] bg-[var(--warn)]/10 px-2 py-0.5 rounded border border-[var(--warn)]/30/60 font-sans">
                               <Star className="w-3 h-3 inline-block fill-amber-550 text-amber-500" aria-hidden="true" /> {avgRating} / 5.0 Rating
                             </div>
                           )}
@@ -538,7 +560,7 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
                                           className={`w-3 h-3 ${i <= rev.rating ? 'fill-amber-550 text-amber-550' : 'text-slate-300'}`}
                                         />
                                       ))}
-                                      <span className="text-[var(--muted)] font-normal ml-1.5 font-mono">{rev.date}</span>
+                                      <span className="text-[var(--muted)] font-normal ml-1.5 font-sans">{rev.date}</span>
                                     </div>
                                   </div>
                                   <p className="text-[var(--muted)] italic leading-relaxed">
@@ -871,21 +893,46 @@ export default function DonorSearch({ donors, onReviewSubmitted, activeTab, setA
 
                 {/* ── Step 2: consent ── */}
                 {step === 2 && (
-                  <div className="p-4 bg-blood-soft border border-blood/25 rounded-xl fade-in">
-                    <div className="flex items-start gap-2.5">
-                      <ShieldAlert className="w-5 h-5 text-blood shrink-0 mt-0.5" />
-                      <label className="flex items-start gap-2.5 text-xs text-ink leading-relaxed cursor-pointer">
-                        <input
-                          type="checkbox"
-                          id="reg-consent"
-                          checked={consentGiven}
-                          onChange={(e) => setConsentGiven(e.target.checked)}
-                          className="mt-0.5 w-4 h-4 accent-[var(--blood)] shrink-0"
-                        />
-                        <span>
-                          I consent to my blood type and contact phone being listed so hospitals and patient attendants in Islamabad & Rawalpindi can reach me during a blood crisis. My full number is only revealed after I accept a request.
-                        </span>
-                      </label>
+                  <div className="space-y-3 fade-in">
+                    <div className="p-4 bg-blood-soft border border-blood/25 rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <ShieldAlert className="w-5 h-5 text-blood shrink-0 mt-0.5" />
+                        <label className="flex items-start gap-2.5 text-xs text-ink leading-relaxed cursor-pointer">
+                          <input
+                            type="checkbox"
+                            id="reg-consent"
+                            checked={consentGiven}
+                            onChange={(e) => setConsentGiven(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-[var(--blood)] shrink-0"
+                          />
+                          <span>
+                            I consent to my blood type and contact phone being listed so hospitals and patient attendants in Islamabad & Rawalpindi can reach me during a blood crisis. My full number is only revealed after I accept a request.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                    {/* P3b-10: privacy-policy consent — recorded server-side
+                        (version + timestamp) when the record is created. */}
+                    <div className="p-4 bg-card border border-border rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <Lock className="w-5 h-5 text-muted shrink-0 mt-0.5" />
+                        <label className="flex items-start gap-2.5 text-xs text-ink leading-relaxed cursor-pointer">
+                          <input
+                            type="checkbox"
+                            id="reg-privacy-consent"
+                            checked={privacyConsent}
+                            onChange={(e) => setPrivacyConsent(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-[var(--blood)] shrink-0"
+                          />
+                          <span>
+                            I have read and agree to the{" "}
+                            <a href="#privacy" className="font-semibold underline underline-offset-2" style={{ color: 'var(--blood)' }}>
+                              BloodRadar privacy policy
+                            </a>
+                            , including how my data is used, how long it is kept, and my right to delete it.
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 )}

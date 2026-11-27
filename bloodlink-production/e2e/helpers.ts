@@ -74,6 +74,7 @@ export async function registerDonorViaUi(
   // Stepper: details → eligibility → consent → verify. Each Continue advances.
   await reg.getByRole("button", { name: "Continue" }).click();
   await reg.locator("#reg-consent").check();
+  await reg.locator("#reg-privacy-consent").check();
   await reg.getByRole("button", { name: "Continue" }).click();
   await reg.getByRole("button", { name: "Send verification code" }).click();
   const code = await readDevOtp(page);

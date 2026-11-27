@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Hospital } from "../types";
 import { API_BASE } from "../lib/api";
+import { postWithBotCheck } from "../lib/turnstile";
 import {
   AlertCircle, Heart, Users, BellRing, CheckCircle2, PhoneCall,
   XCircle, Eye, Zap, Minus, Plus, Siren, Phone, Check,
@@ -88,6 +89,46 @@ const HOTLINES = [
 /** Strip non-digits; keep an optional leading 92 country code. */
 function phoneDigits(p: string): string {
   return p.replace(/[^\d]/g, "");
+}
+
+// P3b-5: elapsed-time label for the requester's live panel. Kept as a pure
+// function so the ticker below only re-renders when the LABEL changes —
+// once a minute after the first — instead of flashing every second (and
+// spamming the panel's aria-live region).
+function elapsedLabel(startedAt: string | null): string | null {
+  if (!startedAt) return null;
+  const start = new Date(startedAt).getTime();
+  if (Number.isNaN(start)) return null;
+  const mins = Math.floor((Date.now() - start) / 60000);
+  if (mins < 1) return "Requested less than a minute ago";
+  if (mins < 60) return `Requested ${mins} min ago`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `Requested ${h}h ${m}m ago`;
+}
+
+// Tiny isolated ticker: re-renders only itself, and only when the label
+// changes (every minute), so the whole SOS form never re-renders on the
+// second hand.
+function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
+  const [label, setLabel] = useState<string | null>(() => elapsedLabel(startedAt));
+  useEffect(() => {
+    if (!startedAt) return;
+    const update = () => setLabel(prev => {
+      const next = elapsedLabel(startedAt);
+      return prev === next ? prev : next;
+    });
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  if (!label) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--muted)' }}>
+      <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+      {label}
+    </span>
+  );
 }
 
 export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormProps) {
@@ -248,21 +289,17 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
     setSubmitPhase('loading');
 
     try {
-      const response = await fetch(`${API_BASE}/api/emergencies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientName: emergencyMode ? "" : patientName,
-          bloodGroup,
-          unitsNeeded,
-          hospitalId,
-          contactPhone,
-          reason: emergencyMode ? "" : reason,
-          urgency: emergencyMode ? "Immediate (SOS)" : urgency,
-          city,
-          neighbourhood,
-          proofToken,
-        })
+      const response = await postWithBotCheck(`${API_BASE}/api/emergencies`, {
+        patientName: emergencyMode ? "" : patientName,
+        bloodGroup,
+        unitsNeeded,
+        hospitalId,
+        contactPhone,
+        reason: emergencyMode ? "" : reason,
+        urgency: emergencyMode ? "Immediate (SOS)" : urgency,
+        city,
+        neighbourhood,
+        proofToken,
       });
 
       if (response.ok) {
@@ -328,11 +365,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
     setVerifyError("");
     setDevOtpHint("");
     try {
-      const res = await fetch(`${API_BASE}/api/requester/otp/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: contactPhone }),
-      });
+      const res = await postWithBotCheck(`${API_BASE}/api/requester/otp/request`, { phone: contactPhone });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setDevOtpHint(data.devOtp || "");
@@ -500,6 +533,22 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
   };
   const shareUrl = mySos ? `https://wa.me/?text=${encodeURIComponent(buildShareMessage(mySos.request, mySos.myPhone))}` : "#";
   const noMatches = matchingCount !== null && matchingCount === 0;
+
+  // P3b-5: the "donors notified" step of the live-status progression —
+  // pending until the requester taps Notify, active while sending, done
+  // once donors were actually notified, blocked when the registry has
+  // nobody available right now (honest, never "done" by pretending).
+  const notifyStep: { state: 'done' | 'active' | 'pending' | 'blocked'; text: string } = notifying
+    ? { state: 'active', text: "Notifying compatible donors…" }
+    : notifiedCount === null
+      ? (matchingCount === null
+          ? { state: 'pending', text: "Checking the registry for compatible donors…" }
+          : noMatches
+            ? { state: 'blocked', text: "No compatible donors in the registry right now — share on WhatsApp to reach further." }
+            : { state: 'pending', text: `Tap “Notify Matching Donors” to alert ${matchingCount} matched donor${matchingCount === 1 ? "" : "s"}.` })
+      : notifiedCount > 0
+        ? { state: 'done', text: `${notifiedCount} compatible donor${notifiedCount === 1 ? "" : "s"} notified — a reply shows their number here.` }
+        : { state: 'blocked', text: "No available donors right now — we keep retrying with new signups." };
   const selectedHospital = hospitals.find(h => h.id === hospitalId) || null;
   const hospitalPhone = selectedHospital?.phone || "";
   const cityHospitals = hospitals.filter(h => h.city === city);
@@ -572,6 +621,13 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                 </Button>
               </span>
             )}
+            {/* P3b-4: with zero matches the three next steps are WhatsApp,
+                hospital, and the 1122 helpline — never a dead end. */}
+            {noMatches && (
+              <a href="tel:1122" className="inline-flex">
+                <Button variant="secondary" size="md" icon={<Siren className="w-4 h-4" />}>Helpline 1122</Button>
+              </a>
+            )}
             <span className="inline-flex">
               <Button variant="ghost" size="md" icon={<Eye className="w-4 h-4" />} onClick={() => document.getElementById("sos-live-panel")?.scrollIntoView({ behavior: "smooth" })}>
                 Track this request
@@ -608,6 +664,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
               ) : reveal.status === 'donor-accepted' ? (
                 <div>
                   <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>A donor accepted your request!</p>
+                  <ElapsedTimer startedAt={mySos.request?.createdAt ?? null} />
                   {reveal.donor && (
                     <div className="mt-2 space-y-2">
                       <div className="p-3 rounded-lg flex items-center justify-between gap-3 border" style={{ background: 'var(--safe-tint)', borderColor: 'rgb(0 196 140 / 0.4)' }}>
@@ -615,7 +672,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                           <p className="text-sm font-bold" style={{ color: 'var(--ink)' }}>
                             {reveal.donor.name} <span style={{ color: 'var(--blood-dark)' }}>({reveal.donor.bloodGroup})</span>
                           </p>
-                          <p className="text-xs font-mono mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                          <p className="text-xs font-sans mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
                             {reveal.donor.city}
                             {reveal.acceptedAt ? ` · ${new Date(reveal.acceptedAt).toLocaleString()}` : ''}
                           </p>
@@ -645,6 +702,7 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                         ? `${matchingCount} donors matched — notify them now.`
                         : "Checking for compatible donors…"}
                   </p>
+                  <ElapsedTimer startedAt={mySos.request?.createdAt ?? null} />
                 </div>
               )}
             </div>
@@ -653,14 +711,6 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
           {/* Actions — waiting state */}
           {reveal.status === 'waiting' && (
             <div className="mt-3 space-y-2">
-              {notifiedCount !== null && (
-                <p className="text-xs flex items-center gap-1" style={{ color: 'var(--muted)' }}>
-                  <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  {notifiedCount > 0
-                    ? `${notifiedCount} compatible donors notified`
-                    : "No available donors were notified right now — we keep retrying with new signups"}
-                </p>
-              )}
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="primary" onClick={handleNotifyDonors} loading={notifying} icon={<BellRing className="w-4 h-4" />}>
                   Notify Matching Donors
@@ -675,8 +725,40 @@ export default function SOSRequestForm({ hospitals, onSuccess }: SOSRequestFormP
                   Cancel SOS
                 </Button>
               </div>
+              {/* P3b-5: explicit live-status progression — posted →
+                  notified → accepted. Each step reports the truth: the
+                  first is always done, the second reflects the notify
+                  action honestly (including "nobody available"), and the
+                  third carries the wait copy. */}
+              <ol className="rounded-lg border p-3 space-y-2" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <li className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: 'var(--ink)' }}>
+                  <CheckCircle2 className="w-4 h-4 mt-px shrink-0" style={{ color: 'var(--safe-text)' }} aria-hidden="true" />
+                  <span className="flex-1 min-w-0">
+                    Request posted — <strong>{mySos.request?.bloodGroup}</strong>
+                    {mySos.request?.hospitalName ? ` at ${mySos.request.hospitalName}` : ""}.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: notifyStep.state === 'pending' ? 'var(--muted)' : 'var(--ink)' }}>
+                  {notifyStep.state === 'done' ? (
+                    <CheckCircle2 className="w-4 h-4 mt-px shrink-0" style={{ color: 'var(--safe-text)' }} aria-hidden="true" />
+                  ) : notifyStep.state === 'active' ? (
+                    <BellRing className="w-4 h-4 mt-px shrink-0 animate-pulse" style={{ color: 'var(--blood)' }} aria-hidden="true" />
+                  ) : notifyStep.state === 'blocked' ? (
+                    <AlertCircle className="w-4 h-4 mt-px shrink-0" style={{ color: 'var(--warn-text)' }} aria-hidden="true" />
+                  ) : (
+                    <Clock className="w-4 h-4 mt-px shrink-0" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+                  )}
+                  <span className="flex-1 min-w-0">{notifyStep.text}</span>
+                </li>
+                <li className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+                  <Clock className="w-4 h-4 mt-px shrink-0" aria-hidden="true" />
+                  <span className="flex-1 min-w-0">
+                    Waiting for a donor to accept — We check every 15 seconds and show their number here the moment someone does.
+                  </span>
+                </li>
+              </ol>
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                We check every 15 seconds and show the donor's number here the moment someone accepts.
+                This request closes itself after 48 hours without an update — re-open it if you still need blood.
               </p>
               {/* Transparent ranking: who's nearby, and exactly why. */}
               <TopMatches sosId={mySos.id} />

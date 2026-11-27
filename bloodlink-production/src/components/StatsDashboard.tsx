@@ -137,7 +137,7 @@ export default function StatsDashboard() {
           </h3>
           <div className="h-56 w-full flex items-center justify-center">
             {stats.bloodDistribution.length === 0 ? (
-              <p className="text-xs text-[var(--muted)] font-mono">No data initialized</p>
+              <p className="text-xs text-[var(--muted)] font-sans">No data initialized</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

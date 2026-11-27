@@ -3,6 +3,7 @@ import { z } from "zod";
 import { normalizePhone } from "../lib/phoneUtils";
 import { sendOtpToPhone, verifyOtp } from "../services/otpService";
 import { issueProofToken } from "../services/requesterProofService";
+import { verifyTurnstile } from "../lib/turnstile";
 
 // Requester phone proof (P0-1): the same OTP challenge as login, but for
 // anonymous SOS requesters. A successful verify mints a 15-minute proof
@@ -14,6 +15,8 @@ const router = Router();
 
 const requestSchema = z.object({
   phone: z.string().trim().min(7, "Phone number looks too short").max(20, "Phone number looks too long"),
+  // P3a-7: optional Turnstile token (required only when keys are configured).
+  turnstileToken: z.string().trim().max(2048).optional(),
 });
 
 const verifySchema = z.object({
@@ -28,6 +31,11 @@ router.post("/otp/request", async (req, res, next) => {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "A valid phone number is required." });
     }
     const phone = normalizePhone(parsed.data.phone);
+
+    // P3a-7: bot wall when Turnstile is configured.
+    if (!(await verifyTurnstile(parsed.data.turnstileToken, req.ip || ""))) {
+      return res.status(400).json({ error: "Bot check failed. Please retry." });
+    }
 
     const result = await sendOtpToPhone(phone);
     if (result.ok === false) {

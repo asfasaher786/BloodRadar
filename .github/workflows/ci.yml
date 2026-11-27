@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+defaults:
+  run:
+    working-directory: bloodlink-production
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,6 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: bloodlink-production/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -27,3 +32,8 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      # P3b-9: block merges on high/critical advisories (moderate stays a
+      # warning). Dependabot opens the fix PRs; this step guards the gate.
+      - name: Dependency security audit
+        run: npm audit --audit-level=high

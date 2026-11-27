@@ -119,3 +119,16 @@ export async function revokeRefreshTokenByJti(jti: string): Promise<void> {
   const idx = memoryRows.findIndex((r) => r.jti === jti);
   if (idx !== -1) memoryRows.splice(idx, 1);
 }
+
+// P3b-10 delete-my-data: account deletion must end every session on every
+// device, not just the one that made the call.
+export async function revokeAllRefreshTokensForSub(sub: string): Promise<void> {
+  const { mode, db } = await getDb();
+  if (mode === "mongodb" && db) {
+    await db.collection("refreshtokens").deleteMany({ sub });
+    return;
+  }
+  for (let i = memoryRows.length - 1; i >= 0; i--) {
+    if (memoryRows[i].sub === sub) memoryRows.splice(i, 1);
+  }
+}

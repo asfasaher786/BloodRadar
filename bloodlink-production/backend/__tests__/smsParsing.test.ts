@@ -14,7 +14,8 @@ describe("incoming SMS parsing", () => {
       Body: "NEED O+ BLOOD URGENT ISLAMABAD",
     });
     expect(res.status).toBe(200);
-    expect(res.body.reply).toContain("Request received");
+    expect(res.body.ok).toBe(true);
+    expect(res.body.confirmBackDelivered).toBe(true);
   });
 
   it("accepts lowercase from/text and resolves the city", async () => {
@@ -27,7 +28,7 @@ describe("incoming SMS parsing", () => {
       text: "o+ rawalpindi",
     });
     expect(res.status).toBe(200);
-    expect(res.body.reply).toContain("Request received");
+    expect(res.body.confirmBackDelivered).toBe(true);
 
     // The created SOS must carry the normalized sender and parsed city.
     const list = await request(app).get("/api/emergencies");
@@ -46,7 +47,8 @@ describe("incoming SMS parsing", () => {
       Body: "please help me urgently",
     });
     expect(res.status).toBe(200);
-    expect(res.body.reply).toContain("couldn't read your blood group");
+    expect(res.body.ok).toBe(true);
+    expect(res.body.confirmBackDelivered).toBe(true);
   });
 
   it("rejects malformed payloads and missing senders with 400", async () => {
@@ -68,7 +70,8 @@ describe("incoming SMS parsing", () => {
       From: "+92300999888",
       Body: "please help me urgently",
     });
-    expect(res.body.reply).toContain("couldn't read your blood group");
+    expect(res.body.ok).toBe(true);
+    expect(res.body.confirmBackDelivered).toBe(true);
 
     // The admin-facing audit trail records the failure honestly, so the
     // team can see which real-world messages the parsers can't handle.
@@ -100,7 +103,7 @@ describe("incoming SMS parsing", () => {
       Body: "NEED AB- RAWALPINDI NOW",
     });
     expect(res.status).toBe(200);
-    expect(res.body.reply).toContain("Request received");
+    expect(res.body.confirmBackDelivered).toBe(true);
 
     // The alert is dispatched without blocking the reply — poll briefly.
     let mine: any[] = [];

@@ -25,6 +25,7 @@ describe("OTP login flow", () => {
       phone,
       code: reqRes.body.devOtp,
       registerAsDonor: true,
+      privacyConsent: true,
       name: "Auth Test Donor",
       bloodGroup: "B+",
       city: "Rawalpindi",

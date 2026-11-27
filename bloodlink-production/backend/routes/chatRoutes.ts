@@ -2,7 +2,7 @@ import { Router } from "express";
 import crypto from "crypto";
 import { z } from "zod";
 import { chatbotClassifier } from "./mlRoutes";
-import { askGemini, chatAiEnabled } from "../services/geminiService";
+import { askGemini, chatAiStatus } from "../services/geminiService";
 import { getChatSessionHistory, addChatMessage } from "../services/dbService";
 import { sanitizeText } from "../lib/sanitize";
 
@@ -17,11 +17,10 @@ const EMERGENCY_CONFIDENCE_THRESHOLD = 0.6;
 // Honest AI labeling (Phase 3): the assistant must never claim capabilities
 // it doesn't have. When GEMINI_API_KEY is unset every answer comes from the
 // local rules-based fallback, and both the UI and the reply itself say so.
+// P3b-1 adds the real model name and a runtime "degraded" flag: configured
+// is not working, and the UI must know when live calls are falling back.
 router.get("/status", (_req, res) => {
-  res.json({
-    aiEnabled: chatAiEnabled(),
-    model: chatAiEnabled() ? "gemini-1.5-flash" : null
-  });
+  res.json(chatAiStatus());
 });
 
 const chatSchema = z.object({

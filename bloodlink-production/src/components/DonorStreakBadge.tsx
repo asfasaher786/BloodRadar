@@ -98,7 +98,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Zap className="w-4 h-4" style={{ fill: 'var(--warn-ink)' }} />
             <span>{donor.stats.streakCount}</span>
           </div>
-          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+          <span className="block text-xs mt-1 font-sans" style={{ color: 'var(--muted)' }}>
             Streak Days
           </span>
         </div>
@@ -108,7 +108,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Heart className="w-4 h-4" style={{ fill: 'var(--blood)' }} />
             <span>{donor.stats.donationsCount}</span>
           </div>
-          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+          <span className="block text-xs mt-1 font-sans" style={{ color: 'var(--muted)' }}>
             Bags Donated
           </span>
         </div>
@@ -118,7 +118,7 @@ export default function DonorStreakBadge({ donor, onToggleAvailability, onDonorU
             <Shield className="w-4 h-4" />
             <span>{donor.stats.livesSaved}</span>
           </div>
-          <span className="block text-xs mt-1 font-mono" style={{ color: 'var(--muted)' }}>
+          <span className="block text-xs mt-1 font-sans" style={{ color: 'var(--muted)' }}>
             Lives Saved
           </span>
         </div>

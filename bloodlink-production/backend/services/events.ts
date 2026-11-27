@@ -17,6 +17,21 @@ let heartbeat: NodeJS.Timeout | null = null;
 
 const HEARTBEAT_MS = 25_000;
 
+// P3a-4: open SSE connections are an unbounded per-client server resource
+// (every tab holds one open stream). One script or a buggy client loop could
+// hold hundreds. Cap concurrent streams per IP; the excess gets an honest
+// 503 from the route. 10 is enough for any real user (a few tabs/devices
+// behind the same NAT) while starving deliberate stream floods.
+export const MAX_SSE_CONNECTIONS_PER_IP = 10;
+const connectionsByIp = new Map<string, Set<SseClient>>();
+
+function clientIp(res: Response): string {
+  const ip = res.req?.ip || res.req?.socket?.remoteAddress || "unknown";
+  // Express reports IPv4-mapped addresses as ::ffff:1.2.3.4 — normalize so
+  // one client counts once.
+  return ip.replace(/^::ffff:/, "");
+}
+
 function startHeartbeat(): void {
   heartbeat = setInterval(() => {
     for (const client of clients) {
@@ -36,7 +51,11 @@ function stopHeartbeat(): void {
   }
 }
 
-export function registerSseClient(res: Response): void {
+export function registerSseClient(res: Response): boolean {
+  const ip = clientIp(res);
+  const bucket = connectionsByIp.get(ip) ?? new Set<SseClient>();
+  if (bucket.size >= MAX_SSE_CONNECTIONS_PER_IP) return false;
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -48,12 +67,17 @@ export function registerSseClient(res: Response): void {
 
   const client: SseClient = { res, id: nextClientId++ };
   clients.add(client);
+  bucket.add(client);
+  connectionsByIp.set(ip, bucket);
   if (!heartbeat) startHeartbeat();
 
   res.on("close", () => {
     clients.delete(client);
+    bucket.delete(client);
+    if (bucket.size === 0) connectionsByIp.delete(ip);
     if (clients.size === 0) stopHeartbeat();
   });
+  return true;
 }
 
 // Event payloads must be PII-free. If you're tempted to include a phone

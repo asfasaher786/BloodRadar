@@ -77,7 +77,7 @@ export function BecomeDonorBand({ onBecomeDonor }: { onBecomeDonor: () => void }
                 </div>
                 <div>
                   <div className="font-display font-bold text-sm" style={{ color: 'var(--ink)' }}>Gold badge</div>
-                  <div className="font-mono text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Unlocks as your streak grows</div>
+                  <div className="font-sans text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Unlocks as your streak grows</div>
                 </div>
               </div>
               <p className="text-sm mt-4 leading-relaxed" style={{ color: 'var(--muted)' }}>

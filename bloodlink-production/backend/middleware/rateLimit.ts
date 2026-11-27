@@ -21,6 +21,7 @@ export interface RateLimiters {
   otpVerify: RateLimitRequestHandler;
   sos: RateLimitRequestHandler;
   chat: RateLimitRequestHandler;
+  totpVerify: RateLimitRequestHandler;
 }
 
 function json429(message: string) {
@@ -71,6 +72,17 @@ export function createRateLimiters(): RateLimiters {
       standardHeaders: "draft-7",
       legacyHeaders: false,
       handler: json429("You're chatting too fast. Please wait a moment."),
+    }),
+    // P3a-8: the two-step (TOTP/recovery) step is the last door before an
+    // admin session exists — keep guessing space small per IP. The 6-digit
+    // code rotates every 30s, so 5 attempts/10min is no real usability cost
+    // for the owner while killing bulk guessing.
+    totpVerify: rateLimit({
+      windowMs: 10 * 60 * 1000,
+      limit: IS_DEV_SERVER ? 200 : 5,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      handler: json429("Too many two-step attempts. Please try again later."),
     }),
   };
 }

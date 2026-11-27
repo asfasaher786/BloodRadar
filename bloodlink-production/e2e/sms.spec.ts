@@ -14,7 +14,8 @@ test.describe("SMS webhook (API-level)", () => {
     });
     expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(body.reply).toContain("Request received");
+    expect(body.ok).toBe(true);
+    expect(body.confirmBackDelivered).toBe(true);
   });
 
   test("accepts generic gateway field names (from/text)", async ({ request }) => {
@@ -22,7 +23,9 @@ test.describe("SMS webhook (API-level)", () => {
       data: { from: uniquePhone(), text: "o+ rawalpindi" },
     });
     expect(res.status()).toBe(200);
-    expect((await res.json()).reply).toContain("Request received");
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.confirmBackDelivered).toBe(true);
   });
 
   test("answers honestly when no blood group can be read", async ({ request }) => {
@@ -30,7 +33,9 @@ test.describe("SMS webhook (API-level)", () => {
       data: { From: uniquePhone(), Body: "please help me urgently" },
     });
     expect(res.status()).toBe(200);
-    expect((await res.json()).reply).toContain("couldn't read your blood group");
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.confirmBackDelivered).toBe(true);
   });
 
   test("rejects malformed payloads with 400", async ({ request }) => {

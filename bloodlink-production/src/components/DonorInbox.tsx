@@ -129,7 +129,7 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
           <h2 className="text-sm font-display font-bold" style={{ color: 'var(--ink)' }}>
             Contact Requests
           </h2>
-          <p className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
+          <p className="text-xs font-sans" style={{ color: 'var(--muted)' }}>
             {openItems.length} waiting for your help
           </p>
         </div>
@@ -150,7 +150,7 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
               Number shared — call the patient now
             </p>
             {acceptedInfo.sos && (
-              <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs font-sans mt-0.5" style={{ color: 'var(--muted)' }}>
                 {acceptedInfo.sos.patientName} · {acceptedInfo.sos.bloodGroup} · {acceptedInfo.sos.hospitalName}
               </p>
             )}
@@ -175,10 +175,10 @@ export default function DonorInbox({ onChanged }: DonorInboxProps) {
                   <span className="px-1.5 py-0.5 rounded text-xs font-mono font-bold text-white" style={{ background: 'var(--blood)' }}>{item.bloodGroup}</span>
                   <span className="text-xs font-bold font-sans truncate" style={{ color: 'var(--ink)' }}>{item.patientName}</span>
                 </div>
-                <p className="text-xs font-mono mt-1" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs font-sans mt-1" style={{ color: 'var(--muted)' }}>
                   {item.hospitalName} · {item.city} · {item.unitsNeeded} unit{item.unitsNeeded > 1 ? 's' : ''}
                 </p>
-                <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs font-sans mt-0.5" style={{ color: 'var(--muted)' }}>
                   <Heart className="w-3 h-3 inline mr-0.5" style={{ color: 'var(--blood)' }} />
                   Requester:{' '}
                   <span className="font-bold" style={{ color: 'var(--ink)' }}>{item.requesterPhone}</span>

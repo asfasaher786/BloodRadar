@@ -37,7 +37,8 @@ describe("SMS webhook secret", () => {
       .set("x-webhook-secret", "gateway-shared-secret")
       .send(payload);
     expect(withHeader.status).toBe(200);
-    expect(withHeader.body.reply).toContain("Request received");
+    expect(withHeader.body.ok).toBe(true);
+    expect(withHeader.body.confirmBackDelivered).toBe(true);
 
     const withBearer = await request(app)
       .post("/api/sms/incoming")

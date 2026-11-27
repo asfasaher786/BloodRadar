@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { CONFIG } from "../config/config";
 import { resolveCity, SUPPORTED_CITIES } from "../config/regions";
+import { redactPhonesFromText } from "../lib/phoneRedaction";
 
 let ai: GoogleGenAI | null = null;
 if (CONFIG.GEMINI_API_KEY) {
@@ -15,14 +16,26 @@ if (CONFIG.GEMINI_API_KEY) {
 }
 
 const CLINICAL_INSTRUCTIONS = `
-You are BloodRadar Triage Coordinator, a clinical decision support system designed specifically to service the twin cities of Rawalpindi and Islamabad, Pakistan.
-Your primary objective is managing, advising on, and triaging patient blood requirements, voluntary donor coordination, and healthcare navigation.
+You are the BloodRadar Triage Coordinator, a blood-donation assistance service for Rawalpindi and Islamabad, Pakistan. You help people find compatible donors, understand blood groups and compatibility, locate nearby hospitals, and raise emergency SOS requests.
 
-PROMPT DIRECTIVES & CLINICAL COMPLIANCE:
-- If the user has a medical emergency or requires immediate blood, classify this as a high urgency case. Advise them to use the SOS request form in our web platform immediately or dial the emergency Helpline +92 51 1122.
-- Provide real nearby hospital insights based on Rawalpindi/Islamabad geography (e.g., Holy Family Hospital, BBH, PIMS, Shifa International) and recommend matching blood groups if they specify a recipient blood group!
-- Keep your description clear and formatting clean with standard Markdown bullet points.
+ABSOLUTE GUARDRAILS — these override everything else in this prompt:
+- You are NOT a doctor and your answers are NOT medical advice. Never diagnose a condition, interpret symptoms, or predict a medical outcome. If asked, say clearly that you can only help with blood-donation logistics and that they should speak to a healthcare professional.
+- Never recommend, prescribe, or dose any medication — prescription or over-the-counter. Redirect all medication questions to a doctor or pharmacist.
+- In any urgent or emergency situation, always tell the user to dial the emergency helpline 1122 immediately and to use the SOS request form on our platform.
+- When you give any health-related guidance, state clearly that it is not medical advice.
+
+PLATFORM HELP:
+- If the user needs blood urgently, classify it as high urgency: tell them to use the SOS request form immediately or dial 1122.
+- Provide real nearby hospital information for Rawalpindi/Islamabad (e.g. Holy Family Hospital, BBH, PIMS, Shifa International) and recommend matching blood groups when the recipient's blood group is specified.
+- Keep answers clear, concise, and formatted with standard Markdown bullet points.
 `;
+
+// Runtime health tracker for honest status reporting: configured (key set)
+// is not the same as working. The flag flips to true on any failed live
+// call and back to false on the next successful one, so /api/chat/status
+// can say "AI unavailable right now" instead of claiming Gemini while
+// every call is silently falling back.
+let lastLiveCallFailed = false;
 
 export async function askGemini(
   message: string,
@@ -37,23 +50,31 @@ export async function askGemini(
       const metadataInstruction = `\n[CLASSIFIER METADATA - Patient Intent: "${classifierLabel}" with ${classifierConfidence}% confidence score. Tailor your answer specifically to address this parsed intent with clinical precision].`;
       const instructions = CLINICAL_INSTRUCTIONS + metadataInstruction;
 
-      const historyPrompt = history.slice(-5).map(m => 
-        `${m.sender === 'user' ? 'Patient' : 'BloodRadar'}: ${m.text}`
+      // P3b-10: phone numbers are stripped from the message AND the history
+      // before anything reaches Gemini. The stored session keeps the
+      // original text (the user's own data); the third-party model never
+      // sees it.
+      const historyPrompt = history.slice(-5).map(m =>
+        `${m.sender === 'user' ? 'Patient' : 'BloodRadar'}: ${redactPhonesFromText(m.text)}`
       ).join("\n");
-      const completePrompt = `${historyPrompt}\nPatient: ${message}\nBloodRadar:`;
+      const completePrompt = `${historyPrompt}\nPatient: ${redactPhonesFromText(message)}\nBloodRadar:`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: CONFIG.GEMINI_MODEL,
         contents: completePrompt,
         config: {
           systemInstruction: instructions,
-          temperature: 0.7,
+          // P3b-1: low temperature keeps triage answers grounded and
+          // consistent (no creative drift on a safety-critical topic).
+          temperature: 0.2,
         }
       });
 
       const text = response.text || "I am processing your query. Please locate the donor list or SOS request on our dashboard for immediate matching.";
+      lastLiveCallFailed = false;
       return { text, source: "gemini" };
     } catch (err) {
+      lastLiveCallFailed = true;
       console.error("Gemini API generation error:", err);
       return { text: getFallbackResponse(message, language, isEmergencyAlert), source: "fallback" };
     }
@@ -67,6 +88,17 @@ export async function askGemini(
 // comes from the local rules-based fallback. Never claims AI it can't do.
 export function chatAiEnabled(): boolean {
   return ai !== null;
+}
+
+// Full honest status for /api/chat/status: capability (key present), which
+// model, and runtime health (did the last live call fail?). The UI shows
+// "AI unavailable · rules-based" when degraded instead of pretending.
+export function chatAiStatus(): { aiEnabled: boolean; model: string | null; degraded: boolean } {
+  return {
+    aiEnabled: ai !== null,
+    model: ai ? CONFIG.GEMINI_MODEL : null,
+    degraded: ai !== null && lastLiveCallFailed,
+  };
 }
 
 // Real, honest AI use: unlike the strict regex parser, this handles messy,
@@ -85,8 +117,10 @@ Respond with ONLY a JSON object, no other text, in exactly this shape:
 Do not include any explanation, markdown formatting, or extra text — only the raw JSON object.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: text,
+      model: CONFIG.GEMINI_MODEL,
+      // P3b-10: strip phone-like sequences before the SMS body leaves the
+      // server. The original stays in our audit trail only.
+      contents: redactPhonesFromText(text),
       config: { systemInstruction: instruction, temperature: 0 }
     });
 
@@ -96,9 +130,11 @@ Do not include any explanation, markdown formatting, or extra text — only the 
     const bloodGroup = VALID_GROUPS_FOR_PARSING.includes(parsed.bloodGroup) ? parsed.bloodGroup : undefined;
     const city = resolveCity(parsed.city);
 
+    lastLiveCallFailed = false;
     if (!bloodGroup) return null; // don't guess on the one field that truly matters
     return { bloodGroup, city };
   } catch (err) {
+    lastLiveCallFailed = true;
     console.error("AI SMS parsing failed, falling back to honest 'unclear' response:", err);
     return null;
   }

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { CONFIG } from "../config/config";
 import { getDb } from "./dbService";
-import { getSmsProvider } from "../lib/smsProvider";
+import { sendSmsGuarded, isPhoneAllowedForSms } from "../lib/smsProvider";
 
 // OTP lifecycle. Rules:
 //  - 6-digit code, hashed at rest (sha256 + per-code salt) — the plaintext
@@ -72,6 +72,16 @@ export type OtpSendResult =
 
 export async function sendOtpToPhone(phone: string): Promise<OtpSendResult> {
   const now = Date.now();
+
+  // P3a-7: refuse non-allow-listed numbers BEFORE any cooldown/counter state
+  // is touched — a rejected foreign number costs nothing and learns nothing.
+  if (!isPhoneAllowedForSms(phone)) {
+    return {
+      ok: false,
+      error: "BloodRadar currently serves Pakistani numbers only (+92). If the patient is abroad, please ask a relative in Pakistan to coordinate.",
+    };
+  }
+
   const existing = await getRecord(phone);
 
   if (existing) {
@@ -85,7 +95,9 @@ export async function sendOtpToPhone(phone: string): Promise<OtpSendResult> {
     }
   }
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // P3a-2: Math.random() is not cryptographically secure — a predictable OTP
+  // defeats the whole login. crypto.randomInt is CSPRNG-backed and uniform.
+  const code = crypto.randomInt(100000, 1000000).toString();
   const salt = crypto.randomBytes(8).toString("hex");
 
   const record: OtpRecord = {
@@ -101,10 +113,10 @@ export async function sendOtpToPhone(phone: string): Promise<OtpSendResult> {
   };
   await putRecord(record);
 
-  // Deliver through the configured SMS provider. The console provider
-  // prints the code server-side (dev only by default).
-  const provider = getSmsProvider();
-  const delivered = await provider.sendSms(phone, `Your BloodRadar verification code is ${code}. It expires in 5 minutes. Do not share it with anyone.`);
+  // Deliver through the configured SMS provider, gated by the P3a-7
+  // allow-list + daily spend cap. The console provider prints the code
+  // server-side (dev only by default).
+  const delivered = await sendSmsGuarded(phone, `Your BloodRadar verification code is ${code}. It expires in 5 minutes. Do not share it with anyone.`);
   if (!delivered) {
     return { ok: false, error: "Failed to send the code through the SMS provider. Please try again." };
   }

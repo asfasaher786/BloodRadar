@@ -1,0 +1,20 @@
+# P3b-9: automated dependency updates. Weekly PRs for npm + GitHub Actions.
+# The CI workflow (root .github/workflows/ci.yml) runs the full test suite
+# plus `npm audit --audit-level=high` on every PR, so Dependabot PRs are
+# validated before merge.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/bloodlink-production"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"

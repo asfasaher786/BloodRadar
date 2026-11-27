@@ -76,7 +76,11 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
       // Esri World Street Map (free for public web apps with attribution,
       // no API key). OSM's own tile server blocks live apps by policy, and
       // CARTO basemaps now require an API key, so neither works keyless.
-      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      // P3a-3: tiles load from services.arcgisonline.com (NOT server.…) —
+      // field-tested: the server. host drops parallel tile requests on
+      // Pakistani ISPs (0/20 in browser probes) while services. loads
+      // 20/20. Same basemap, same attribution.
+      L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ',
         maxZoom: 19
       }).addTo(map);
@@ -344,7 +348,7 @@ export default function MapComponent({ hospitals, camps, selectedItem, onSelectI
         {!mapLoaded && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface-2)]/90 z-20">
             <div className="w-10 h-10 border-4 border-[var(--blood)] border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-xs text-[var(--muted)] mt-3 font-mono">Loading map…</p>
+            <p className="text-xs text-[var(--muted)] mt-3 font-sans">Loading map…</p>
           </div>
         )}
 

@@ -115,6 +115,7 @@ Full list with defaults — mirrors `backend/config/config.ts` (single source of
 | `BACKEND_URL` | no | same origin for the single-service setup |
 | `MONGO_URI` | strongly | absent = in-memory fallback (dev only) |
 | `GEMINI_API_KEY` | no | chatbot falls back honestly when absent |
+| `GEMINI_MODEL` | no | default `gemini-1.5-flash`; chat replies + SMS parser; override for a newer model |
 | `SMS_PROVIDER` | yes | `console` (dev), `twilio`, or `custom-gateway` |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | if twilio | |
 | `SMS_GATEWAY_URL` / `SMS_GATEWAY_API_KEY` | if custom-gateway | POST `{to, text}` JSON |
@@ -124,6 +125,10 @@ Full list with defaults — mirrors `backend/config/config.ts` (single source of
 | `NOTIFICATION_TZ` | no | default `Asia/Karachi` |
 | `ADMIN_PHONES` / `STAFF_PHONES` / `NGO_PHONES` | no | comma-separated `+CC` numbers |
 | `ENABLE_DONATION_REMINDERS` | no | `"true"` only after SMS proven working |
+| `SMS_ALLOWED_PREFIXES` | no | default `+92` — non-matching numbers get 429 on the OTP doors (P3a-7) |
+| `SMS_GLOBAL_DAILY_CAP` | no | default `200` — daily outbound cap; only gates live providers, console is never capped |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | no | both required to enable the Cloudflare Turnstile bot check; absent = check is a no-op |
+| `ADMIN_TOTP_RESET` | no | `"true"` wipes all admin two-step state at boot (§10); remove after one deploy |
 | `LOG_LEVEL` | no | `info` |
 
 Production rate limits are already strict in code (vs relaxed dev limits) and engage automatically on `NODE_ENV=production`.
@@ -137,7 +142,9 @@ Production rate limits are already strict in code (vs relaxed dev limits) and en
 - **Twilio:** Console → Phone Numbers → the sender number → Messaging → *A message comes in* → Webhook URL `https://<backend>/api/sms/incoming`, method POST, and add the custom header (Twilio supports custom headers on webhooks) or put the secret in the URL as a query param and note it — the code checks the header first.
 - **custom-gateway:** configure in the provider's panel per their docs.
 
-Test after deploy: send "YES SOS-XXXX" style reply per the strict-format parser (see `backend/routes/smsRoutes.ts`) and confirm it appears on the board.
+**Confirm-back contract (P3b-2):** the platform sends the confirmation back to the sender itself, through its own outbound provider (guarded by the SMS allow-list + daily cap), using strict fixed templates (plain text, single SMS segment — see `backend/lib/smsConfirmBack.ts`). The webhook responds `{ ok: true, confirmBackDelivered: boolean }` — `confirmBackDelivered=false` means the outbound send was refused/failed while the request was still processed. The gateway must be configured to **not** auto-reply to the sender (Twilio ignores the JSON response anyway); otherwise senders get duplicate messages. Until a live outbound provider is configured (#52), confirm-backs print to the server log only.
+
+Test after deploy: send "YES SOS-XXXX" style reply per the strict-format parser (see `backend/routes/smsRoutes.ts`) and confirm it appears on the board and the sender receives the confirm-back SMS.
 
 ---
 
@@ -162,7 +169,47 @@ Run these against the live URL before announcing:
 
 ---
 
-## 10. Honest caveats (unchanged)
+## 10. Admin two-step (TOTP) & SMS-pumping defences (Phase 3a)
+
+**Why this exists:** an admin phone grants OTP-verified superuser access, and the OTP doors were the cheapest vector for an attacker (SIM-swap or spam attacks). Two independent layers shipped in Phase 3a:
+
+- **P3a-8 admin two-step:** after the phone OTP, admin sign-in requires a second factor — a 6-digit authenticator-app code or a recovery code. Enrollment is optional but strongly recommended for every admin number.
+- **P3a-7 SMS-pumping defences:** OTP requests are restricted to allowed country prefixes, capped at a global daily budget, and (optionally) gated behind a Cloudflare Turnstile check on the frontend.
+
+### 10.1 Enabling two-step for an admin (once per admin phone)
+
+1. Sign in with the admin number as usual (phone OTP).
+2. Admin Dashboard → **Security** tab → **Enable two-step**.
+3. Scan the QR with any authenticator app (Google Authenticator, Authy, etc.) — the secret is also shown as text if scanning fails.
+4. Enter the 6-digit code the app shows → **Activate**.
+5. **Save the 8 recovery codes.** They are shown exactly once, in this screen only. Print them or store them offline. Each code works once and is never recoverable (only hashes are stored).
+
+After this, every future sign-in with that number shows a "Two-step code" step after the phone OTP. Admin endpoints keep working in the already-authenticated session; two-step is a sign-in gate, not a per-request prompt.
+
+**Turning it off:** Security tab → **Turn off two-step** — requires a live code from the authenticator app. Recovery codes do not disable two-step; they only complete a sign-in.
+
+**New-device alert:** the first sign-in from a browser the server hasn't seen (tracked by an httpOnly device cookie, up to 10 remembered devices) writes an `admin_new_device` audit row and sends an SMS alert to the admin. Until #52 (SendPK) is live, outbound SMS is console-only, so the alert appears in the server logs — the audit row in Admin → Audit is the reliable signal meanwhile.
+
+### 10.2 Lockout recovery (forgot the authenticator AND the codes)
+
+If an admin loses the authenticator app and the recovery codes, the two-step gate can only be cleared with this flag:
+
+1. In Render: Environment → add `ADMIN_TOTP_RESET` = `true`.
+2. Deploy once. The boot log shows an `admin_totp_reset` audit row; all admin two-step state (secrets, recovery hashes, remembered devices) is wiped.
+3. **Immediately** set `ADMIN_TOTP_RESET` back to `false` (or delete the var) and redeploy.
+4. Sign in with the phone OTP only, then re-enroll in the Security tab (10.1) and save the new codes.
+
+The flag runs at most once per process, so a stray `true` left in env keeps wiping state on **every deploy** — that is why step 3 must not be skipped. The audit trail (`admin_totp_reset`) records each wipe.
+
+### 10.3 SMS-pumping defences in production
+
+- **Allow-list:** `SMS_ALLOWED_PREFIXES` (default `+92`) — OTP requests for numbers not matching any prefix are refused (429) and never reach the provider. Add prefixes comma-separated for multi-country deployments.
+- **Daily cap:** `SMS_GLOBAL_DAILY_CAP` (default 200) counts every delivered SMS per UTC day; past it, new sends are refused. Spend alerts at 70% and 100% go to the logs and audit. The `console` provider is never capped (dev only), so this only has teeth once a live provider is configured.
+- **Turnstile (optional):** set both `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` to put a Cloudflare Turnstile challenge in front of the bot-walled forms (donor SOS, requester flows, contact requests, chat). Absent keys = the check is a silent no-op; the keys are exposed in `/api/config/public` so the UI knows whether to show the widget.
+
+---
+
+## 11. Honest caveats (unchanged)
 
 - Load-test numbers in LOAD-TEST-REPORT.md describe the dev server (in-memory DB, one source IP, relaxed dev limits) — not production capacity on Atlas. Re-run `node loadtest/run-loadtest.mjs all` against the production URL after deploy.
 - The MongoDB path is code-inspected + covered by the gated integration test above, but has never run against a real Atlas cluster as of this writing.

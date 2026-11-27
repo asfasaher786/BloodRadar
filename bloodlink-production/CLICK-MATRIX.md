@@ -95,7 +95,7 @@ mechanism, noted inline.
 | 64 | Escape | Key | Dialog closes | `chatbot.spec` |
 | 65 | Message input + Send | Fill + click | Rules-based answer with honest "no AI connected" badge; emergency phrasing escalates | `chatbot.spec` |
 | **SMS channel (API-level)** | | | | |
-| 66 | `/api/sms/incoming` | POST | Creates SOS from strict-format SMS; honest reply when unparseable; 400 on malformed payloads | `sms.spec` |
+| 66 | `/api/sms/incoming` | POST | Creates SOS from strict-format SMS; confirm-back via outbound SMS (strict schema, `{ok, confirmBackDelivered}`); 400 on malformed payloads | `sms.spec` |
 
 ## Notes
 

@@ -69,6 +69,10 @@ export const CONFIG = {
   IS_TEST: NODE_ENV === "test",
   MONGO_URI: process.env.MONGO_URI || "",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  // Chatbot model name. Configurable so a newer model can be rolled out via
+  // env without a code change. Used for both the chat replies and the SMS
+  // messy-text parser.
+  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-1.5-flash",
   FRONTEND_URL: process.env.FRONTEND_URL || "",
   BACKEND_URL: process.env.BACKEND_URL || "",
   // Auth
@@ -117,4 +121,23 @@ export const CONFIG = {
   // without it are rejected; when unset, the webhook is open (dev default)
   // and production logs a warning at boot.
   SMS_WEBHOOK_SECRET: process.env.SMS_WEBHOOK_SECRET || "",
+  // P3a-7 SMS-pumping defences.
+  // 1. Country allow-list: only numbers starting with one of these prefixes
+  //    can ever receive an SMS (OTP or donor alert). Comma-separated, e.g.
+  //    "+92,+971". Defaults to Pakistan.
+  SMS_ALLOWED_PREFIXES: (process.env.SMS_ALLOWED_PREFIXES || "+92")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  // 2. Global daily send cap (all phones combined). Crossing 70% logs a
+  //    spend warning; hitting the cap stops sends for the rest of the UTC
+  //    day and raises a spend alert in the audit log + admin metrics.
+  SMS_GLOBAL_DAILY_CAP: Number(process.env.SMS_GLOBAL_DAILY_CAP || 200) || 200,
+  // 3. Cloudflare Turnstile (optional, free): when both keys are set the
+  //    OTP-request and SOS-create endpoints require a solved challenge, and
+  //    the frontend renders the widget. Absent keys = everything behaves
+  //    exactly as before (no bot wall).
+  TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY || "",
+  TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY || "",
+  TURNSTILE_ENABLED: Boolean(process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SECRET_KEY),
 };

@@ -35,6 +35,8 @@ services:
       # --- AI triage -------------------------------------------------------
       - key: GEMINI_API_KEY
         sync: false # absent = chatbot degrades to fallback replies (documented)
+      - key: GEMINI_MODEL
+        sync: false # optional; defaults to gemini-1.5-flash — override for a newer model
       # --- SMS outbound ----------------------------------------------------
       # twilio: needs the three TWILIO_* vars.
       # custom-gateway: needs SMS_GATEWAY_URL (+ optional SMS_GATEWAY_API_KEY).
@@ -54,6 +56,18 @@ services:
       # --- SMS inbound webhook ---------------------------------------------
       - key: SMS_WEBHOOK_SECRET
         generateValue: true # gateway must send as x-webhook-secret header (or Bearer)
+      # --- SMS-pumping defences (P3a-7) --------------------------------------
+      - key: SMS_ALLOWED_PREFIXES
+        value: "+92" # refuse SMS to any number outside this allow-list
+      - key: SMS_GLOBAL_DAILY_CAP
+        value: "200" # spend alert at 70%, hard stop at 100% (per UTC day)
+      - key: TURNSTILE_SITE_KEY
+        sync: false # optional: set BOTH keys to enable the Cloudflare bot wall
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      # --- Admin two-step recovery (P3a-8) -----------------------------------
+      - key: ADMIN_TOTP_RESET
+        value: "false" # set "true" for ONE deploy to wipe admin TOTP state, then back to "false"
       # --- Web push (VAPID) ------------------------------------------------
       # All three must be set for push; absent = UI honestly says "not configured".
       - key: VAPID_PUBLIC_KEY

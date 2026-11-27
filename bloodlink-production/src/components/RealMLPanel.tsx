@@ -67,11 +67,17 @@ export default function RealMLPanel() {
       <div>
         <h2 className="text-2xl font-black text-[var(--ink)] tracking-tight flex items-center gap-2">
           <Brain className="text-[var(--blood)] w-7 h-7" />
-          Real ML Lab
+          Urgency Lab (admin-only)
         </h2>
         <p className="text-sm text-[var(--muted)] mt-1">
           Trained live on this platform's real database — not synthetic data. Predictions are honestly withheld until there's enough real data to trust.
         </p>
+        {/* P3b-3 honesty: say exactly what the model is — and is not. */}
+        <div className="mt-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <p className="text-xs leading-relaxed text-[var(--muted)]">
+            <span className="font-bold text-[var(--ink)]">What this actually is:</span> a lightweight, rule-based statistical text classifier (TF-IDF word matching) trained on real request text and the urgency label the requester chose. It is <span className="font-semibold">not</span> a neural network, <span className="font-semibold">not</span> medical AI, and it <span className="font-semibold">never</span> makes medical decisions — it only summarizes patterns in incoming requests for the admin team.
+          </p>
+        </div>
       </div>
 
       {/* Model status */}
@@ -171,7 +177,7 @@ export default function RealMLPanel() {
             {clustering.centroids?.map((c: any, i: number) => (
               <div key={i} className="flex justify-between p-2 bg-[var(--surface)] rounded-lg">
                 <span>{c.label}</span>
-                <span className="font-mono">{c.count} donors nearby</span>
+                <span className="font-sans">{c.count} donors nearby</span>
               </div>
             ))}
           </div>

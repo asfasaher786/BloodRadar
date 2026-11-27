@@ -49,6 +49,7 @@ export async function registerDonor(
     phone,
     code,
     registerAsDonor: true,
+    privacyConsent: true,
     name: opts.name || "Test Donor",
     bloodGroup: opts.bloodGroup || "O-",
     city: opts.city || "Islamabad",
